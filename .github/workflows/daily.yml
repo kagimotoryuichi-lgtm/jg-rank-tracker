@@ -1,10 +1,9 @@
 name: daily-rank-check
 
 on:
-  # 毎日の自動実行は、DataForSEO・Apify のキーを登録して試運転が済んでから有効にする
-  # （キーが無いまま動くと毎朝失敗して通知メールが届くため）
-  # schedule:
-  #   - cron: "0 21 * * *"   # 毎日 21:00 UTC = 日本時間 6:00 / ベトナム時間 4:00
+  # 毎日の自動実行（2026-11-05 有効化: DataForSEO・Apify の試運転が済んだため）
+  schedule:
+    - cron: "0 21 * * *"   # 毎日 21:00 UTC = 日本時間 6:00 / ベトナム時間 4:00
   workflow_dispatch:        # 手動実行（GitHub の Actions 画面の「Run workflow」）
     inputs:
       mode:
