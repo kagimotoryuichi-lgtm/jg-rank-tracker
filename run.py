@@ -119,7 +119,7 @@ def run(cfg, args, log=print):
         except Exception as e:  # Yahoo! JAPAN が失敗しても Google/Bing は保存する
             log(f"  Yahoo! JAPAN 失敗: {e}")
             for j in yj_jobs:
-                rows.append(row_of(date, j, {}, f"error {type(e).__name__}"))
+                rows.append(row_of(date, j, {}, f"error {e}"[:200]))
 
     # --- 保存 ---
     out = ROOT / ("data/ranks_dryrun.csv" if args.dry_run else "data/ranks.csv")
@@ -145,13 +145,49 @@ def run(cfg, args, log=print):
     return rows, errors
 
 
+def diagnose_bing(cfg, log=print):
+    """Bing の「No Search Results（40102）」の原因を切り分ける。パラメータを変えた少数のタスクを送り、結果を表で出す（記録はしない）。"""
+    from tracker.clients import DataForSEO
+    d = DataForSEO(os.environ.get("DFS_LOGIN", ""), os.environ.get("DFS_PASSWORD", ""))
+    base = [("ジャパングリーンクリニック ハノイ", 2392, "ja"), ("ジャパングリーンクリニック", 2392, "ja"),
+            ("Japan Green Clinic Hanoi", 2704, "en"), ("ハノイ 病院", 2704, "ja")]
+    variants = [("今の設定", {"device": "desktop", "os": "windows", "depth": 30}),
+                ("os なし", {"device": "desktop", "depth": 30}),
+                ("depth 10", {"device": "desktop", "os": "windows", "depth": 10}),
+                ("location_name", {"device": "desktop", "depth": 10, "use_name": True})]
+    tasks, meta = [], {}
+    for kw, loc, lang in base:
+        for vname, v in variants:
+            t = {"keyword": kw, "language_code": lang, "tag": json.dumps([vname, kw, loc], ensure_ascii=False)}
+            t.update({k: val for k, val in v.items() if k != "use_name"})
+            if v.get("use_name"):
+                t["location_name"] = {2392: "Japan", 2704: "Vietnam"}[loc]
+            else:
+                t["location_code"] = loc
+            tasks.append(t)
+    ids = {tid: (tag, c) for tag, tid, c in d.post_tasks("bing", tasks)}
+    got = d.wait_all({tid: "bing" for tid in ids}, 30, 30, log)
+    log("variant | keyword | loc | status | items | organic | cost")
+    for tid, (tag, c) in ids.items():
+        vname, kw, loc = json.loads(tag)
+        t = got.get(tid, {})
+        res = (t.get("result") or [None])[0] or {}
+        items = res.get("items") or []
+        org = [i for i in items if i.get("type") == "organic"]
+        log(f"{vname} | {kw} | {loc} | {t.get('status_code')} {t.get('status_message')} | {len(items)} | {len(org)} | {c}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--no-yahoo", action="store_true")
     ap.add_argument("--sheet-test", action="store_true")
+    ap.add_argument("--diagnose-bing", action="store_true")
     args = ap.parse_args()
+    if args.diagnose_bing:
+        diagnose_bing(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
+        return
     if args.sheet_test:  # 見本応答で 1 語ずつだけ（API は呼ばない）
         args.dry_run = True
         args.limit = args.limit or 1

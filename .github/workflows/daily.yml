@@ -13,6 +13,7 @@ on:
         options:
           - sheet-test      # API を呼ばず、見本の行をスプレッドシートの ranks_test シートに書く
           - production      # 本番（DataForSEO・Apify を呼ぶ）
+          - bing-diagnose   # Bing の結果なし（40102）の切り分け（16 タスク・数セント、記録はしない）
         default: sheet-test
       limit:
         description: "キーワードを各言語この数に絞る（空欄なら全部。sheet-test では無視）"
@@ -43,9 +44,12 @@ jobs:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           SHEET_WEBAPP_URL: ${{ secrets.SHEET_WEBAPP_URL }}
           SHEET_TOKEN: ${{ secrets.SHEET_TOKEN }}
+          PYTHONUNBUFFERED: "1"     # ログを途中経過から表示する
         run: |
           if [ "${{ github.event.inputs.mode }}" = "sheet-test" ]; then
             python run.py --sheet-test
+          elif [ "${{ github.event.inputs.mode }}" = "bing-diagnose" ]; then
+            python run.py --diagnose-bing
           elif [ -n "${{ github.event.inputs.limit }}" ]; then
             python run.py --limit "${{ github.event.inputs.limit }}"
           else
