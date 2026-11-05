@@ -1,6 +1,7 @@
 {
   "site_domain": "japangreen.vn",
   "brand_names": ["japan green vietnam", "ジャパン グリーン ベトナム", "ジャパングリーン ベトナム", "ジャパン・グリーン・ベトナム"],
+  "_note_locations": "2026-11-06 から VN-ja・VN-en の地点を国（2704）→ハノイ市（1028580 \"Hanoi,Ha Noi,Vietnam\"、Google・Bing とも対応）に変更。日本は国（2392）のまま",
   "depth": 30,
   "profiles": {
     "chrome-pc": {"label": "Chrome（PC）",      "engine": "google",   "device": "desktop", "os": "windows"},
@@ -10,9 +11,9 @@
   },
   "locales": [
     {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone", "yahoo-pc"]},
-    {"id": "VN-ja", "label": "ベトナム×日本語", "location_code": 2704, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
+    {"id": "VN-ja", "label": "ハノイ×日本語",   "location_code": 1028580, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
     {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
-    {"id": "VN-en", "label": "ベトナム×英語",   "location_code": 2704, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]}
+    {"id": "VN-en", "label": "ハノイ×英語",     "location_code": 1028580, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]}
   ],
   "keywords": {
     "ja": [
