@@ -30,6 +30,7 @@ LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 PROFILE_LABEL = {pid: p["label"] for pid, p in CFG["profiles"].items()}
 LOCALE_LABEL = {l["id"]: l["label"] for l in CFG["locales"]}
+YAHOO_NOTE_1105 = "・Yahoo! JAPAN は初回の全件計測で設定の不備（トークン）により失敗し、その後の確認で日本語 2 語だけ取得した。残りは「取得失敗」。翌日から全語を計測する。"
 OUT, FAIL, NOTYET = "圏外", "取得失敗", "未計測"
 
 
@@ -274,15 +275,18 @@ def main(src, out, day=None):
         (f"・計測日 {day}。毎日ベトナム時間 8:00 に自動で計測し、Google スプレッドシート「japangreen_検索順位」の ranks シートに追記している（このファイルはその抜粋）。", False),
         ("・順位は「通常の検索結果」だけを数えた当院（japangreen.vn）の順位。広告・地図の枠・AI の概要は数えない。30 位までに無ければ「圏外」。", False),
         ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ、Yahoo! JAPAN（PC）。Firefox・Mac の Safari は Chrome（PC）と同じ結果。", False),
-        ("・地点は国単位（日本・ベトナム）。ログインや閲覧履歴の影響は含まない（各自の画面とは多少ずれる）。", False),
+        ("・地点は日本＝国単位、ベトナム＝ハノイ市（2026-11-06 から。それ以前のベトナムは国単位なので比べない）。"
+         "ログインや閲覧履歴の影響は含まない（各自の画面とは多少ずれる）。", False),
         ("", False),
         ("この日の注意", True),
         ("・Bing は同じ条件でも「結果なし」が不規則に返る。2 回まで自動で送り直し、それでも取れなかったものは「取得失敗」。", False),
-        ("・Yahoo! JAPAN は初回の全件計測で設定の不備（トークン）により失敗し、その後の確認で日本語 2 語だけ取得した。残りは「取得失敗」。翌日から全語を計測する。", False),
         ("・同じ日に複数回計測した組は、取得できた最後の結果を使っている。", False),
         ("", False),
         ("取得の状況（ブラウザ別）", True),
-    ] + [(f"・{PROFILE_LABEL[p]}: 取得 {st[(p, 'ok')]} 件／失敗 {st[(p, '失敗')]} 件", False) for p in CFG["profiles"]]
+    ]
+    if day == "2026-11-05":
+        lines.insert(lines.index(("・同じ日に複数回計測した組は、取得できた最後の結果を使っている。", False)), (YAHOO_NOTE_1105, False))
+    lines += [(f"・{PROFILE_LABEL[p]}: 取得 {st[(p, 'ok')]} 件／失敗 {st[(p, '失敗')]} 件", False) for p in CFG["profiles"]]
     for i, (txt, b) in enumerate(lines, 1):
         c = n.cell(i, 1, txt)
         c.alignment = Alignment(wrap_text=True, vertical="top")
