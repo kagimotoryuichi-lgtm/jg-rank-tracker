@@ -2,6 +2,7 @@
 import base64
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -13,8 +14,16 @@ def _req(url, method="GET", body=None, headers=None, timeout=120):
     h = {"Content-Type": "application/json"}
     h.update(headers or {})
     r = urllib.request.Request(url, data=data, method=method, headers=h)
-    with urllib.request.urlopen(r, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(r, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:  # 本文の status_message を添えて原因を分かりやすくする
+        try:
+            msg = json.loads(e.read().decode("utf-8", "replace")).get("status_message", "")
+        except Exception:
+            msg = ""
+        hint = "（DFS_LOGIN／DFS_PASSWORD が API Access の値か確認）" if e.code == 401 else ""
+        raise RuntimeError(f"HTTP {e.code} {msg}{hint}".strip()) from None
 
 
 class DataForSEO:

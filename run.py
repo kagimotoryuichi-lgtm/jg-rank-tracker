@@ -76,25 +76,32 @@ def run(cfg, args, log=print):
             rows.append(row_of(date, j, parse_dataforseo(fx, cfg["site_domain"], cfg["brand_names"]), "dry-run"))
     elif dfs_jobs:
         from tracker.clients import DataForSEO
-        d = DataForSEO(os.environ["DFS_LOGIN"], os.environ["DFS_PASSWORD"])
         by_tag = {tag_of(j): j for j in dfs_jobs}
         ids = {}
-        for eng in ("google", "bing"):
-            tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
-                      "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-                      "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs if j["engine"] == eng]
-            if not tasks:
-                continue
-            for tag, tid, c in d.post_tasks(eng, tasks):
-                ids[tid] = (eng, tag)
-                cost += float(c or 0)
-        log(f"  DataForSEO に {len(ids)} 件を登録（費用 ${cost:.4f}）")
-        got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
-        for tid, (eng, tag) in ids.items():
-            t = got.get(tid, {})
-            st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
-            parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
-            rows.append(row_of(date, by_tag[tag], parsed, st))
+        try:
+            d = DataForSEO(os.environ.get("DFS_LOGIN", ""), os.environ.get("DFS_PASSWORD", ""))
+            for eng in ("google", "bing"):
+                tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
+                          "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
+                          "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs if j["engine"] == eng]
+                if not tasks:
+                    continue
+                for tag, tid, c in d.post_tasks(eng, tasks):
+                    ids[tid] = (eng, tag)
+                    cost += float(c or 0)
+            log(f"  DataForSEO に {len(ids)} 件を登録（費用 ${cost:.4f}）")
+            got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+            for tid, (eng, tag) in ids.items():
+                t = got.get(tid, {})
+                st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
+                parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
+                rows.append(row_of(date, by_tag[tag], parsed, st))
+        except Exception as e:  # DataForSEO が失敗しても Yahoo! JAPAN と保存は続ける
+            log(f"  DataForSEO 失敗: {e}")
+            done = {tag for _, tag in ids.values()}
+            for j in dfs_jobs:
+                if tag_of(j) not in done:
+                    rows.append(row_of(date, j, {}, f"error {e}"[:200]))
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:
