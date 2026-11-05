@@ -152,8 +152,9 @@ class RetryNoResultsTest(unittest.TestCase):
             return out
         FakeDFS.post_tasks = post
         args = argparse.Namespace(dry_run=False, limit=1, no_yahoo=True, sheet_test=False)
-        with mock.patch("tracker.clients.DataForSEO", FakeDFS), mock.patch.dict(os.environ, {}, clear=False), \
-                mock.patch.object(run, "ROOT", ROOT / "tests" / "_tmp"):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("tracker.clients.DataForSEO", FakeDFS), \
+                mock.patch.dict(os.environ, {"SHEET_WEBAPP_URL": ""}), mock.patch.object(run, "ROOT", Path(tmp)):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         self.assertEqual(errors, [])
         self.assertEqual(len(rows), 4 * 3)
