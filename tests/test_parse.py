@@ -81,6 +81,7 @@ class AppsScriptClientTest(unittest.TestCase):
         from unittest import mock
         res = mock.MagicMock()
         res.__enter__.return_value.read.return_value = text.encode("utf-8")
+        res.__enter__.return_value.geturl.return_value = "https://script.googleusercontent.com/x"
         return mock.patch("urllib.request.urlopen", return_value=res)
 
     def test_posts_token_in_body_and_checks_ok(self):

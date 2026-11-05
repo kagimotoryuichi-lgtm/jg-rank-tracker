@@ -3,6 +3,8 @@
 受け口のスクリプトは apps-script/Code.gs。Google Cloud のサービスアカウントは使わない。
 """
 import json
+import re
+import urllib.parse
 import urllib.request
 
 HEADER = ["date", "engine", "locale", "locale_label", "keyword", "group", "rank", "url",
@@ -23,10 +25,19 @@ def append_rows(webapp_url, token, rows, worksheet="ranks", timeout=120):
     # Apps Script は 302 で結果の URL へ転送する。urllib は POST の 302 を GET で追う（本文は送り直さない）
     with urllib.request.urlopen(req, timeout=timeout) as res:
         text = res.read().decode("utf-8", "replace")
+        final_host = urllib.parse.urlsplit(res.geturl()).netloc
     try:
         out = json.loads(text)
     except ValueError:
-        raise SheetWriteError(f"Apps Script の応答が JSON ではない（公開設定を確認）: {text[:200]}")
+        hint = ("Google のログイン画面に転送された。SHEET_WEBAPP_URL が /exec で終わる公開版の URL か"
+                "（/dev のテスト用ではないか）、アクセスできるユーザー＝全員か確認"
+                if final_host.startswith("accounts.") else "公開設定を確認")
+        m = re.search(r"<title>(.*?)</title>", text, re.S | re.I)
+        shape = urllib.parse.urlsplit(webapp_url.strip())
+        url_check = (f"host={shape.netloc} /exec終わり={shape.path.endswith('/exec')} "
+                     f"/u/含む={'/u/' in shape.path} 前後の空白={webapp_url != webapp_url.strip()}")
+        raise SheetWriteError(f"Apps Script の応答が JSON ではない（{hint}）。転送先: {final_host}・"
+                              f"ページ名: {(m.group(1).strip() if m else '不明')[:80]}・URL の形: {url_check}")
     if not out.get("ok"):
         raise SheetWriteError(f"Apps Script がエラーを返した: {out.get('error')}")
     return out
