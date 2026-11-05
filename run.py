@@ -77,13 +77,14 @@ def run(cfg, args, log=print):
     elif dfs_jobs:
         from tracker.clients import DataForSEO
         by_tag = {tag_of(j): j for j in dfs_jobs}
+        task_of = {tag_of(j): {"keyword": j["kw"], "location_code": j["locale"]["location_code"],
+                               "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
+                               "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs}
         ids = {}
         try:
             d = DataForSEO(os.environ.get("DFS_LOGIN", ""), os.environ.get("DFS_PASSWORD", ""))
             for eng in ("google", "bing"):
-                tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
-                          "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-                          "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs if j["engine"] == eng]
+                tasks = [task_of[tag_of(j)] for j in dfs_jobs if j["engine"] == eng]
                 if not tasks:
                     continue
                 for tag, tid, c in d.post_tasks(eng, tasks):
@@ -91,6 +92,25 @@ def run(cfg, args, log=print):
                     cost += float(c or 0)
             log(f"  DataForSEO に {len(ids)} 件を登録（費用 ${cost:.4f}）")
             got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+            # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ 最大 2 回まで送り直す
+            for attempt in range(cfg.get("retry_no_results", 2)):
+                retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if got.get(tid, {}).get("status_code") == 40102]
+                if not retry:
+                    break
+                log(f"  結果なし（40102）を送り直し {attempt + 1} 回目: {len(retry)} 件")
+                new = {}
+                for eng in ("google", "bing"):
+                    ts = [task_of[tag] for _, e, tag in retry if e == eng]
+                    if ts:
+                        for tag, tid2, c in d.post_tasks(eng, ts):
+                            new[tid2] = (eng, tag)
+                            cost += float(c or 0)
+                got2 = d.wait_all({tid: e for tid, (e, _) in new.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+                for tid, _, _ in retry:
+                    ids.pop(tid)
+                ids.update(new)
+                got.update(got2)
+            log(f"  DataForSEO の費用（送り直しを含む）${cost:.4f}")
             for tid, (eng, tag) in ids.items():
                 t = got.get(tid, {})
                 st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"

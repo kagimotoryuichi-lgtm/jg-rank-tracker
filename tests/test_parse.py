@@ -115,5 +115,50 @@ class AppsScriptClientTest(unittest.TestCase):
                 sheets.append_rows("https://example.invalid/exec", "x", [])
 
 
+class RetryNoResultsTest(unittest.TestCase):
+    def test_bing_40102_is_retried_until_ok(self):
+        """Bing の 40102 は送り直し、2 回目で取れたら ok として記録する。"""
+        import argparse
+        import os
+        from unittest import mock
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        ok = json.loads((FX / "dataforseo_task.json").read_text(encoding="utf-8"))
+        posted = []
+
+        class FakeDFS:
+            def __init__(self, *a):
+                self.n = 0
+
+            def post_tasks(self, eng, tasks):
+                out = []
+                for t in tasks:
+                    self.n += 1
+                    posted.append((eng, t["tag"]))
+                    out.append((t["tag"], f"{eng}-{self.n}", 0.0018))
+                return out
+
+            def wait_all(self, ids, *a):
+                # 最初に送った bing の 1 件目だけ 40102、ほかは成功
+                return {tid: ({"status_code": 40102, "status_message": "No Search Results."}
+                              if tid == first_bing[0] else ok) for tid in ids}
+
+        first_bing = []
+        orig_post = FakeDFS.post_tasks
+
+        def post(self, eng, tasks):
+            out = orig_post(self, eng, tasks)
+            if eng == "bing" and not first_bing:
+                first_bing.append(out[0][1])
+            return out
+        FakeDFS.post_tasks = post
+        args = argparse.Namespace(dry_run=False, limit=1, no_yahoo=True, sheet_test=False)
+        with mock.patch("tracker.clients.DataForSEO", FakeDFS), mock.patch.dict(os.environ, {}, clear=False), \
+                mock.patch.object(run, "ROOT", ROOT / "tests" / "_tmp"):
+            rows, errors = run.run(cfg, args, log=lambda *_: None)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 4 * 3)
+        self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 + 1)  # 1 件だけ送り直し
+
+
 if __name__ == "__main__":
     unittest.main()
