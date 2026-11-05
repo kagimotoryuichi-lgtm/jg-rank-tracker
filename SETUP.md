@@ -40,7 +40,8 @@
 
 ## 4.5 書き込みテスト（API のキーが無くてもできる）
 1. Secrets に `SHEET_WEBAPP_URL` と `SHEET_TOKEN` の 2 つだけ登録した段階で、**Actions → daily-rank-check → Run workflow**、`mode` は `sheet-test` のまま実行
-2. 1〜2 分で終わる → スプレッドシートに `ranks_test` シートができ、見本の 9 行（status＝dry-run）が入っていれば成功。このシートは後で消してよい
+2. 1〜2 分で終わる → スプレッドシートに `ranks_test` シートができ、見本の 13 行（status＝dry-run、browser_profile 列あり）が入っていれば成功。このシートは後で消してよい
+   - 2026-11-05 に列（browser_profile・device・os）を足したので、**前の `ranks_test` シートは先に削除**してから実行する（見出しが古いまま残るため）
 3. 毎日の自動実行（schedule）は、5 の試運転が済むまで無効にしてある（Claude が有効にする）
 
 ## 5. 試運転
@@ -52,7 +53,7 @@
 データが数日分たまったら、Claude と一緒に作ります（https://lookerstudio.google.com/ ・無料）。
 
 ## 費用の目安
-- DataForSEO: 月 $3〜10（1 日 104 回 × 30 位まで）
+- DataForSEO: 月 $6〜9 程度（1 日 156 回 × 30 位まで。Chrome（PC）＝Google 52・Edge（PC）＝Bing 52・Safari（iPhone）＝Google スマホ 52。最大で 1 回 $0.0018＝10 件ずつ 3 枚）
 - Apify: 月 $1〜2（無料枠に収まる見込み）
 - GitHub Actions・Google スプレッドシート・Looker Studio: 無料
 

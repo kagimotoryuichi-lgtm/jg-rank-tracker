@@ -7,7 +7,7 @@ import re
 import urllib.parse
 import urllib.request
 
-HEADER = ["date", "engine", "locale", "locale_label", "keyword", "group", "rank", "url",
+HEADER = ["date", "engine", "browser_profile", "device", "os", "locale", "locale_label", "keyword", "group", "rank", "url",
           "local_rank", "has_local_pack", "top10", "results_count", "status", "check_url"]
 
 

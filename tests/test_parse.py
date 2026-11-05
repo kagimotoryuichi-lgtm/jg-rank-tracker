@@ -53,9 +53,15 @@ class JobsTest(unittest.TestCase):
         by = {}
         for j in jobs:
             by[j["engine"]] = by.get(j["engine"], 0) + 1
-        self.assertEqual(by, {"google": 52, "bing": 52, "yahoo_jp": 17})
+        self.assertEqual(by, {"google": 104, "bing": 52, "yahoo_jp": 17})  # google = PC 52 + iPhone 52
         self.assertEqual(len({run.tag_of(j) for j in jobs}), len(jobs))  # tag が一意
-        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 2 * 2 * 2 * 2)
+        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 3 * 2 * 2 * 2)
+        prof = {}
+        for j in jobs:
+            prof[j["profile"]] = prof.get(j["profile"], 0) + 1
+        self.assertEqual(prof, {"chrome-pc": 52, "edge-pc": 52, "iphone": 52, "yahoo-pc": 17})
+        iphone = [j for j in jobs if j["profile"] == "iphone"][0]
+        self.assertEqual((iphone["engine"], iphone["device"], iphone["os"]), ("google", "mobile", "ios"))
 
 
 class SheetTestModeTest(unittest.TestCase):
@@ -71,7 +77,8 @@ class SheetTestModeTest(unittest.TestCase):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         ap.assert_called_once()
         self.assertEqual(ap.call_args.kwargs["worksheet"], "ranks_test")
-        self.assertEqual(len(rows), 4 * 2 + 1)  # google・bing × 4 地点 + Yahoo! JAPAN 1
+        self.assertEqual(len(rows), 4 * 3 + 1)  # chrome-pc・edge-pc・iphone × 4 地点 + Yahoo! JAPAN 1
+        self.assertEqual({r["browser_profile"] for r in rows}, {"chrome-pc", "edge-pc", "iphone", "yahoo-pc"})
         self.assertEqual(errors, [])
         self.assertTrue(all(r["status"] == "dry-run" for r in rows))
 

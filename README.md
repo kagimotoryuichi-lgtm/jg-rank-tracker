@@ -8,7 +8,8 @@ japangreen.vn の検索順位を毎日計測する（Google・Bing＝DataForSEO�
 - 試運転（API を呼ばない）: `python -X utf8 run.py --dry-run`
 - テスト: `python -X utf8 -m unittest discover -s tests`
 
-## 2026-11-05 休止中（手動集計へ）
-- API キー（DataForSEO・Apify）は購入せず、当面は手動で集計する方針（鍵本さんの決定）。毎日の自動実行（schedule）は無効のまま。
-- 手動の記録表は `manual/build_manual_sheet.py` で作る（出力: `OneDrive\japangreen-HP\順位確認\japangreen_順位_手動記録表.xlsx` → Google スプレッドシート「japangreen_検索順位」にインポート）。
-- 再開するときは SETUP.md の 1・2（DataForSEO・Apify と Secrets 3 つ）→ `mode=production`・`limit=2` で試運転 → `daily.yml` の schedule のコメントを外す。
+## 2026-11-05 の方針
+- 同日に一度「API は買わず手動」としたが、**DataForSEO・Apify に課金して自動計測を再開する**ことになった（鍵本さんの決定）。Cốc Cốc は集計の対象外。
+- 計測はブラウザ想定プロファイル（`config.json` の `profiles`）ごと: Chrome（PC）＝Google PC、Edge（PC）＝Bing PC、Safari（iPhone）＝Google mobile/ios、Yahoo! JAPAN（PC）＝Apify。1 日 173 件。
+- 手動の記録表（実ブラウザでの照合用・3 ブラウザ×10 語）は `manual/build_manual_sheet.py` で作る（出力: `OneDrive\japangreen-HP\順位確認\japangreen_順位_手動記録表.xlsx`）。
+- 残り: SETUP.md の 1・2（DataForSEO・Apify と Secrets 3 つ）→ `ranks_test` を消して sheet-test → `mode=production`・`limit=2` で試運転 → `daily.yml` の schedule のコメントを外す。

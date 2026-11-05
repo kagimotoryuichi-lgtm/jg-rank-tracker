@@ -2,12 +2,17 @@
   "site_domain": "japangreen.vn",
   "brand_names": ["japan green vietnam", "ジャパン グリーン ベトナム", "ジャパングリーン ベトナム", "ジャパン・グリーン・ベトナム"],
   "depth": 30,
-  "device": "desktop",
+  "profiles": {
+    "chrome-pc": {"label": "Chrome（PC）",      "engine": "google",   "device": "desktop", "os": "windows"},
+    "edge-pc":   {"label": "Edge（PC）",        "engine": "bing",     "device": "desktop", "os": "windows"},
+    "iphone":    {"label": "Safari（iPhone）",  "engine": "google",   "device": "mobile",  "os": "ios"},
+    "yahoo-pc":  {"label": "Yahoo! JAPAN（PC）", "engine": "yahoo_jp", "device": "desktop", "os": "windows"}
+  },
   "locales": [
-    {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "engines": ["google", "bing", "yahoo_jp"]},
-    {"id": "VN-ja", "label": "ベトナム×日本語", "location_code": 2704, "language_code": "ja", "keyword_set": "ja", "engines": ["google", "bing"]},
-    {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "engines": ["google", "bing"]},
-    {"id": "VN-en", "label": "ベトナム×英語",   "location_code": 2704, "language_code": "en", "keyword_set": "en", "engines": ["google", "bing"]}
+    {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone", "yahoo-pc"]},
+    {"id": "VN-ja", "label": "ベトナム×日本語", "location_code": 2704, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
+    {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
+    {"id": "VN-en", "label": "ベトナム×英語",   "location_code": 2704, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]}
   ],
   "keywords": {
     "ja": [

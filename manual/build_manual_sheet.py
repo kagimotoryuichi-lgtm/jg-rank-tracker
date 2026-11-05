@@ -11,7 +11,6 @@ BROWSERS = [  # 表示名, 検索エンジン, 端末
     ("Chrome（PC）", "Google", "PC"),
     ("Edge（PC）", "Bing", "PC"),
     ("Safari（iPhone）", "Google", "iPhone"),
-    ("Cốc Cốc（PC）", "Cốc Cốc", "PC"),
 ]
 OPTIONAL = [("Chrome（Android）", "Google", "Android"), ("Yahoo! JAPAN アプリ", "Yahoo! JAPAN", "iPhone")]
 KEYWORDS = [
@@ -90,12 +89,12 @@ u.title = "使い方"
 u.column_dimensions["A"].width = 110
 LINES = [
     ("検索順位の手動記録表（ジャパングリーン ベトナム クリニック）", "title"),
-    ("毎週 1 回（月曜。祝日は翌営業日）、ハノイから 4 つのブラウザ × 10 語＝40 回検索して記録します。所要 40〜60 分。", ""),
+    ("実際のブラウザでの見え方を確かめるときに使います（毎日の自動計測との照合、「ブラウザで違う」という報告や指示があったとき）。ハノイから 3 つのブラウザ × 10 語＝30 回検索して記録します。所要 30〜45 分。Cốc Cốc は集計の対象外です（2026-11-05 の決定）。", ""),
     ("", ""),
     ("■ 手順", "h"),
-    ("1. 「ひな形」シートの 2〜41 行目（40 行）をコピーし、「記録」シートのいちばん下（空いている最初の行）に貼り付ける。", ""),
-    ("2. 貼り付けた 40 行の A 列（日付）に今日の日付を入れる（1 つ入れて下へコピー）。", ""),
-    ("3. ブラウザごとにシークレットウィンドウを開く（Chrome＝シークレット、Edge＝InPrivate、iPhone の Safari＝プライベート、Cốc Cốc＝シークレット）。ログインはしない。", ""),
+    ("1. 「ひな形」シートの 2〜31 行目（30 行）をコピーし、「記録」シートのいちばん下（空いている最初の行）に貼り付ける。", ""),
+    ("2. 貼り付けた 30 行の A 列（日付）に今日の日付を入れる（1 つ入れて下へコピー）。", ""),
+    ("3. ブラウザごとにシークレットウィンドウを開く（Chrome＝シークレット、Edge＝InPrivate、iPhone の Safari＝プライベート）。ログインはしない。", ""),
     ("4. 10 語を順に検索し、黄色の列を埋める。", ""),
     ("   ・I 列「順位」: ふつうの検索結果だけを上から数えた、当院（japangreen.vn）の順位。30 位までに無ければ空欄（＝圏外）。", ""),
     ("   ・J 列「地図の枠の順位」: 地図と施設の一覧に当院があれば、その中の順番（1〜3）。無ければ空欄。", ""),
@@ -136,7 +135,7 @@ rec = wb.create_sheet("記録")
 header(rec)
 for row in rows_block():
     rec.append(row)
-body(rec, 40)
+body(rec, 30)
 validations(rec, 5000)
 rec.auto_filter.ref = f"A1:{get_column_letter(len(HEAD))}5000"
 
@@ -145,8 +144,8 @@ tpl = wb.create_sheet("ひな形")
 header(tpl)
 for row in rows_block():
     tpl.append(row)
-body(tpl, 40)
-validations(tpl, 41)
+body(tpl, 30)
+validations(tpl, 31)
 
 # --- 集計 ---
 s = wb.create_sheet("集計")

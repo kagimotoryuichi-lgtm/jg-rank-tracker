@@ -28,28 +28,31 @@ JST = dt.timezone(dt.timedelta(hours=9))
 
 
 def build_jobs(cfg, limit=None, yahoo=True):
-    """計測する組み合わせ（engine, locale, keyword）の一覧。"""
+    """計測する組み合わせ（ブラウザ想定プロファイル × 地点・言語 × 検索語）の一覧。"""
     jobs = []
     for loc in cfg["locales"]:
         kws = cfg["keywords"][loc["keyword_set"]]
         if limit:
             kws = kws[:limit]
-        for eng in loc["engines"]:
-            if eng == "yahoo_jp" and not yahoo:
+        for pid in loc["profiles"]:
+            prof = cfg["profiles"][pid]
+            if prof["engine"] == "yahoo_jp" and not yahoo:
                 continue
             for k in kws:
-                jobs.append({"engine": eng, "locale": loc, "kw": k["kw"], "group": k["group"]})
+                jobs.append({"engine": prof["engine"], "profile": pid, "device": prof["device"], "os": prof["os"],
+                             "locale": loc, "kw": k["kw"], "group": k["group"]})
     return jobs
 
 
 def tag_of(job):
-    return json.dumps([job["engine"], job["locale"]["id"], job["kw"]], ensure_ascii=False)
+    return json.dumps([job["profile"], job["locale"]["id"], job["kw"]], ensure_ascii=False)
 
 
 def row_of(date, job, parsed, status):
     loc = job["locale"]
     return {
-        "date": date, "engine": job["engine"], "locale": loc["id"], "locale_label": loc["label"],
+        "date": date, "engine": job["engine"], "browser_profile": job["profile"], "device": job["device"],
+        "os": job["os"], "locale": loc["id"], "locale_label": loc["label"],
         "keyword": job["kw"], "group": job["group"], "rank": parsed.get("rank", ""),
         "url": parsed.get("url", ""), "local_rank": parsed.get("local_rank", ""),
         "has_local_pack": "TRUE" if parsed.get("has_local_pack") else "FALSE",
@@ -78,7 +81,7 @@ def run(cfg, args, log=print):
         ids = {}
         for eng in ("google", "bing"):
             tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
-                      "language_code": j["locale"]["language_code"], "device": cfg["device"],
+                      "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
                       "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs if j["engine"] == eng]
             if not tasks:
                 continue
