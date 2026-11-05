@@ -22,7 +22,10 @@ def _req(url, method="GET", body=None, headers=None, timeout=120):
             msg = json.loads(e.read().decode("utf-8", "replace")).get("status_message", "")
         except Exception:
             msg = ""
-        hint = "（DFS_LOGIN／DFS_PASSWORD が API Access の値か確認）" if e.code == 401 else ""
+        hint = ""
+        if e.code == 401:
+            hint = ("（DFS_LOGIN／DFS_PASSWORD が API Access の値か確認）" if "dataforseo" in url
+                    else "（APIFY_TOKEN が登録されているか確認）" if "apify" in url else "")
         raise RuntimeError(f"HTTP {e.code} {msg}{hint}".strip()) from None
 
 
