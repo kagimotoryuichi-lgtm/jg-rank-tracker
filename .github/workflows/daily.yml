@@ -1,0 +1,51 @@
+name: daily-rank-check
+
+on:
+  schedule:
+    - cron: "0 21 * * *"   # 毎日 21:00 UTC = 日本時間 6:00 / ベトナム時間 4:00
+  workflow_dispatch:        # 手動実行（GitHub の Actions 画面の「Run workflow」）
+    inputs:
+      limit:
+        description: "キーワードを各言語この数に絞る（空欄なら全部）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write           # data/ranks.csv をリポジトリに保存するため
+
+concurrency:
+  group: daily-rank-check
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install gspread==6.1.4
+      - run: python -m unittest discover -s tests
+      - name: 計測
+        env:
+          DFS_LOGIN: ${{ secrets.DFS_LOGIN }}
+          DFS_PASSWORD: ${{ secrets.DFS_PASSWORD }}
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: |
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            python run.py --limit "${{ github.event.inputs.limit }}"
+          else
+            python run.py
+          fi
+      - name: CSV を保存
+        if: always()
+        run: |
+          git config user.name "rank-bot"
+          git config user.email "rank-bot@users.noreply.github.com"
+          git add data/ranks.csv || true
+          git diff --cached --quiet || git commit -m "ranks $(date -u +%F)"
+          git push || true

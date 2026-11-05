@@ -1,0 +1,46 @@
+{
+  "site_domain": "japangreen.vn",
+  "brand_names": ["japan green vietnam", "ジャパン グリーン ベトナム", "ジャパングリーン ベトナム", "ジャパン・グリーン・ベトナム"],
+  "depth": 30,
+  "device": "desktop",
+  "locales": [
+    {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "engines": ["google", "bing", "yahoo_jp"]},
+    {"id": "VN-ja", "label": "ベトナム×日本語", "location_code": 2704, "language_code": "ja", "keyword_set": "ja", "engines": ["google", "bing"]},
+    {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "engines": ["google", "bing"]},
+    {"id": "VN-en", "label": "ベトナム×英語",   "location_code": 2704, "language_code": "en", "keyword_set": "en", "engines": ["google", "bing"]}
+  ],
+  "keywords": {
+    "ja": [
+      {"kw": "ジャパングリーンクリニック", "group": "brand"},
+      {"kw": "ジャパングリーンクリニック ハノイ", "group": "brand"},
+      {"kw": "ジャパングリーン ベトナム クリニック", "group": "brand"},
+      {"kw": "ジャパングリーン ハノイ", "group": "brand"},
+      {"kw": "ハノイ 日系クリニック", "group": "general"},
+      {"kw": "ハノイ 日本人医師", "group": "general"},
+      {"kw": "ハノイ 病院", "group": "general"},
+      {"kw": "ハノイ 病院 日本語", "group": "general"},
+      {"kw": "ハノイ クリニック", "group": "general"},
+      {"kw": "ハノイ 健康診断", "group": "general"},
+      {"kw": "ハノイ ワークパーミット 健康診断", "group": "general"},
+      {"kw": "ハノイ 予防接種", "group": "general"},
+      {"kw": "ハノイ 皮膚科", "group": "general"},
+      {"kw": "ハノイ 歯医者 日本人", "group": "general"},
+      {"kw": "ハノイ 内視鏡", "group": "general"},
+      {"kw": "ハノイ 婦人科", "group": "general"},
+      {"kw": "ハノイ 小児科", "group": "general"}
+    ],
+    "en": [
+      {"kw": "Japan Green Vietnam Clinic", "group": "brand"},
+      {"kw": "Japan Green Clinic Hanoi", "group": "brand"},
+      {"kw": "Japanese clinic Hanoi", "group": "general"},
+      {"kw": "Japanese doctor Hanoi", "group": "general"},
+      {"kw": "international clinic Hanoi", "group": "general"},
+      {"kw": "health check Hanoi", "group": "general"},
+      {"kw": "work permit health check Hanoi", "group": "general"},
+      {"kw": "Japanese dentist Hanoi", "group": "general"},
+      {"kw": "vaccination Hanoi", "group": "general"}
+    ]
+  },
+  "yahoo_jp": {"actor": "rainminer~yahoo-co-jp-search-scraper", "max_items": 30},
+  "poll": {"interval_sec": 60, "timeout_min": 45}
+}

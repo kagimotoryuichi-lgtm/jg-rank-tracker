@@ -1,0 +1,23 @@
+{
+  "id": "sample-task-id",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "result": [
+    {
+      "keyword": "ハノイ 日系クリニック",
+      "se_results_count": 123000,
+      "check_url": "https://www.google.com/search?q=sample",
+      "item_types": ["paid", "local_pack", "organic"],
+      "items": [
+        {"type": "paid", "rank_group": 1, "rank_absolute": 1, "domain": "ads.example.com", "url": "https://ads.example.com/"},
+        {"type": "local_pack", "rank_group": 1, "rank_absolute": 2, "title": "Lotus Clinic", "domain": "lotus-clinic.com", "url": "https://lotus-clinic.com/"},
+        {"type": "local_pack", "rank_group": 2, "rank_absolute": 3, "title": "Japan Green Vietnam Clinic / ジャパン・グリーン・ベトナム・クリニック", "domain": null, "url": null},
+        {"type": "organic", "rank_group": 1, "rank_absolute": 4, "domain": "dym.asia", "url": "https://dym.asia/column/hanoi"},
+        {"type": "organic", "rank_group": 2, "rank_absolute": 5, "domain": "www.vn.emb-japan.go.jp", "url": "https://www.vn.emb-japan.go.jp/itpr_ja/corona_clinic.html"},
+        {"type": "organic", "rank_group": 3, "rank_absolute": 6, "domain": "www.japangreen.vn", "url": "https://www.japangreen.vn/outpatient-consultation/"},
+        {"type": "organic", "rank_group": 4, "rank_absolute": 7, "domain": "www.japangreen.vn", "url": "https://www.japangreen.vn/"},
+        {"type": "organic", "rank_group": 5, "rank_absolute": 8, "domain": "notjapangreen.vn.example.com", "url": "https://notjapangreen.vn.example.com/"}
+      ]
+    }
+  ]
+}

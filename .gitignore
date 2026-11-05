@@ -1,0 +1,5 @@
+data/ranks_dryrun.csv
+__pycache__/
+*.pyc
+.env
+service-account*.json
