@@ -16,13 +16,14 @@
 2. **Settings → API & Integrations** で「Personal API token」をコピー
 3. 使うアクター: `rainminer/yahoo-co-jp-search-scraper`（第三者製。利用者が少ないので、止まったら代わりを探す）
 
-## 3. Google スプレッドシートと書き込み用アカウント
-1. Google ドライブで新しいスプレッドシートを作る（名前の例: `japangreen 検索順位`）。URL の `/d/` と `/edit` の間の文字列が **SHEET_ID**
-2. https://console.cloud.google.com/ でプロジェクトを作る（例: `jg-rank-tracker`）
-3. 「API とサービス → ライブラリ」で **Google Sheets API** を有効にする
-4. 「IAM と管理 → サービス アカウント」で作成（名前の例: `rank-bot`）→「鍵 → 鍵を追加 → JSON」でファイルをダウンロード
-5. スプレッドシートの「共有」で、サービスアカウントのメールアドレス（`rank-bot@…iam.gserviceaccount.com`）を **編集者** で追加
-6. ダウンロードした JSON は、GitHub に登録したら PC から削除してよい
+## 3. Google スプレッドシートと受け口（Apps Script。Google Cloud は使わない）
+1. Google ドライブで新しいスプレッドシートを作る（名前の例: `japangreen 検索順位`）※2026-11-05 作成済み
+2. スプレッドシートの **拡張機能 → Apps Script** を開く → 最初からある `function myFunction() {}` を消し、このフォルダの `apps-script/Code.gs` の中身をまるごと貼る → 💾 保存（プロジェクト名は `rank-receiver` など）
+3. 上部の関数の選択で **setupToken** を選び「実行」→ 初回は「権限を確認」→ 自分のアカウント →「詳細」→「（安全ではないページ）に移動」→「許可」
+4. 下の「実行ログ」に出た合言葉をコピー → GitHub の Secrets `SHEET_TOKEN` に貼る（チャット・Vault には書かない）
+5. 右上の **デプロイ → 新しいデプロイ** → 種類の歯車で **ウェブアプリ** → 次のユーザーとして実行＝**自分**・アクセスできるユーザー＝**全員** →「デプロイ」
+6. 表示された **ウェブアプリの URL**（`https://script.google.com/macros/s/…/exec`）をコピー → Secrets `SHEET_WEBAPP_URL` に貼る
+7. スクリプトを直したときは「デプロイ → デプロイを管理 → 鉛筆 → バージョン＝新しいバージョン → デプロイ」（URL は変わらない）
 
 ## 4. GitHub（毎日の自動実行）
 1. GitHub で **非公開（Private）** のリポジトリを作る（名前の例: `jg-rank-tracker`。README などは追加しない）
@@ -34,11 +35,11 @@
 | `DFS_LOGIN` | DataForSEO の API login |
 | `DFS_PASSWORD` | DataForSEO の API password |
 | `APIFY_TOKEN` | Apify の Personal API token |
-| `GOOGLE_SA_JSON` | サービスアカウントの JSON ファイルの中身をまるごと貼る |
-| `SHEET_ID` | スプレッドシートの ID |
+| `SHEET_WEBAPP_URL` | Apps Script のウェブアプリの URL（3-6） |
+| `SHEET_TOKEN` | setupToken が出した合言葉（3-4） |
 
 ## 4.5 書き込みテスト（API のキーが無くてもできる）
-1. Secrets に `GOOGLE_SA_JSON` と `SHEET_ID` の 2 つだけ登録した段階で、**Actions → daily-rank-check → Run workflow**、`mode` は `sheet-test` のまま実行
+1. Secrets に `SHEET_WEBAPP_URL` と `SHEET_TOKEN` の 2 つだけ登録した段階で、**Actions → daily-rank-check → Run workflow**、`mode` は `sheet-test` のまま実行
 2. 1〜2 分で終わる → スプレッドシートに `ranks_test` シートができ、見本の 9 行（status＝dry-run）が入っていれば成功。このシートは後で消してよい
 3. 毎日の自動実行（schedule）は、5 の試運転が済むまで無効にしてある（Claude が有効にする）
 

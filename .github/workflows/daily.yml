@@ -35,15 +35,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install gspread==6.1.4
       - run: python -m unittest discover -s tests
       - name: 計測
         env:
           DFS_LOGIN: ${{ secrets.DFS_LOGIN }}
           DFS_PASSWORD: ${{ secrets.DFS_PASSWORD }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_WEBAPP_URL: ${{ secrets.SHEET_WEBAPP_URL }}
+          SHEET_TOKEN: ${{ secrets.SHEET_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.mode }}" = "sheet-test" ]; then
             python run.py --sheet-test

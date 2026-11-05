@@ -6,9 +6,9 @@
   python run.py --limit 2       # キーワードを各言語 2 語に絞る（費用を抑えた試運転）
   python run.py --no-yahoo      # Yahoo! JAPAN（Apify）を外す
   python run.py --sheet-test    # API を呼ばず見本の行をスプレッドシートの ranks_test シートに書く
-                                #（GOOGLE_SA_JSON と SHEET_ID だけで、書き込みの準備を確かめる）
+                                #（SHEET_WEBAPP_URL と SHEET_TOKEN だけで、書き込みの準備を確かめる）
 
-環境変数: DFS_LOGIN, DFS_PASSWORD, APIFY_TOKEN, GOOGLE_SA_JSON, SHEET_ID
+環境変数: DFS_LOGIN, DFS_PASSWORD, APIFY_TOKEN, SHEET_WEBAPP_URL, SHEET_TOKEN
 （GitHub Actions の Secrets から渡す。キーをファイルに書かない）
 """
 import argparse
@@ -123,11 +123,11 @@ def run(cfg, args, log=print):
     log(f"  CSV に {len(rows)} 行を追記: {out.relative_to(ROOT)}")
     if getattr(args, "sheet_test", False):
         from tracker.sheets import append_rows
-        append_rows(os.environ["GOOGLE_SA_JSON"], os.environ["SHEET_ID"], rows, worksheet="ranks_test")
+        append_rows(os.environ["SHEET_WEBAPP_URL"], os.environ["SHEET_TOKEN"], rows, worksheet="ranks_test")
         log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
-    elif not args.dry_run and os.environ.get("SHEET_ID") and os.environ.get("GOOGLE_SA_JSON"):
+    elif not args.dry_run and os.environ.get("SHEET_WEBAPP_URL") and os.environ.get("SHEET_TOKEN"):
         from tracker.sheets import append_rows
-        append_rows(os.environ["GOOGLE_SA_JSON"], os.environ["SHEET_ID"], rows)
+        append_rows(os.environ["SHEET_WEBAPP_URL"], os.environ["SHEET_TOKEN"], rows)
         log("  スプレッドシートに追記")
     errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
     own = [r for r in rows if r["rank"] not in ("", None)]

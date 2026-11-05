@@ -65,7 +65,7 @@ class SheetTestModeTest(unittest.TestCase):
         from unittest import mock
         cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         args = argparse.Namespace(dry_run=True, limit=1, no_yahoo=False, sheet_test=True)
-        env = {"GOOGLE_SA_JSON": "{}", "SHEET_ID": "dummy"}
+        env = {"SHEET_WEBAPP_URL": "https://example.invalid/exec", "SHEET_TOKEN": "dummy"}
         with mock.patch.dict(os.environ, env), mock.patch("tracker.sheets.append_rows") as ap, \
                 mock.patch.object(run, "ROOT", ROOT):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
@@ -74,6 +74,37 @@ class SheetTestModeTest(unittest.TestCase):
         self.assertEqual(len(rows), 4 * 2 + 1)  # google・bing × 4 地点 + Yahoo! JAPAN 1
         self.assertEqual(errors, [])
         self.assertTrue(all(r["status"] == "dry-run" for r in rows))
+
+
+class AppsScriptClientTest(unittest.TestCase):
+    def _fake(self, text):
+        from unittest import mock
+        res = mock.MagicMock()
+        res.__enter__.return_value.read.return_value = text.encode("utf-8")
+        return mock.patch("urllib.request.urlopen", return_value=res)
+
+    def test_posts_token_in_body_and_checks_ok(self):
+        from tracker import sheets
+        with self._fake('{"ok": true, "appended": 1, "sheet": "ranks_test"}') as uo:
+            out = sheets.append_rows("https://example.invalid/exec", "tok", [{"date": "2026-11-05", "rank": 3}],
+                                     worksheet="ranks_test")
+        self.assertEqual(out["appended"], 1)
+        req = uo.call_args.args[0]
+        self.assertNotIn("tok", req.full_url)  # 合言葉は URL に載せない
+        sent = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(sent["token"], "tok")
+        self.assertEqual(sent["header"], sheets.HEADER)
+        self.assertEqual(sent["rows"][0]["rank"], 3)
+        self.assertEqual(sent["rows"][0]["url"], "")
+
+    def test_raises_on_error_or_html(self):
+        from tracker import sheets
+        with self._fake('{"ok": false, "error": "bad token"}'):
+            with self.assertRaises(sheets.SheetWriteError):
+                sheets.append_rows("https://example.invalid/exec", "x", [])
+        with self._fake("<html>sign in</html>"):
+            with self.assertRaises(sheets.SheetWriteError):
+                sheets.append_rows("https://example.invalid/exec", "x", [])
 
 
 if __name__ == "__main__":
