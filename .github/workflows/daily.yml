@@ -1,12 +1,21 @@
 name: daily-rank-check
 
 on:
-  schedule:
-    - cron: "0 21 * * *"   # 毎日 21:00 UTC = 日本時間 6:00 / ベトナム時間 4:00
+  # 毎日の自動実行は、DataForSEO・Apify のキーを登録して試運転が済んでから有効にする
+  # （キーが無いまま動くと毎朝失敗して通知メールが届くため）
+  # schedule:
+  #   - cron: "0 21 * * *"   # 毎日 21:00 UTC = 日本時間 6:00 / ベトナム時間 4:00
   workflow_dispatch:        # 手動実行（GitHub の Actions 画面の「Run workflow」）
     inputs:
+      mode:
+        description: "実行の種類"
+        type: choice
+        options:
+          - sheet-test      # API を呼ばず、見本の行をスプレッドシートの ranks_test シートに書く
+          - production      # 本番（DataForSEO・Apify を呼ぶ）
+        default: sheet-test
       limit:
-        description: "キーワードを各言語この数に絞る（空欄なら全部）"
+        description: "キーワードを各言語この数に絞る（空欄なら全部。sheet-test では無視）"
         required: false
         default: ""
 
@@ -36,7 +45,9 @@ jobs:
           GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: |
-          if [ -n "${{ github.event.inputs.limit }}" ]; then
+          if [ "${{ github.event.inputs.mode }}" = "sheet-test" ]; then
+            python run.py --sheet-test
+          elif [ -n "${{ github.event.inputs.limit }}" ]; then
             python run.py --limit "${{ github.event.inputs.limit }}"
           else
             python run.py

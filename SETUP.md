@@ -37,8 +37,13 @@
 | `GOOGLE_SA_JSON` | サービスアカウントの JSON ファイルの中身をまるごと貼る |
 | `SHEET_ID` | スプレッドシートの ID |
 
+## 4.5 書き込みテスト（API のキーが無くてもできる）
+1. Secrets に `GOOGLE_SA_JSON` と `SHEET_ID` の 2 つだけ登録した段階で、**Actions → daily-rank-check → Run workflow**、`mode` は `sheet-test` のまま実行
+2. 1〜2 分で終わる → スプレッドシートに `ranks_test` シートができ、見本の 9 行（status＝dry-run）が入っていれば成功。このシートは後で消してよい
+3. 毎日の自動実行（schedule）は、5 の試運転が済むまで無効にしてある（Claude が有効にする）
+
 ## 5. 試運転
-1. リポジトリの **Actions → daily-rank-check → Run workflow**。`limit` に `2` を入れて実行（各言語 2 語だけ。費用は数セント）
+1. リポジトリの **Actions → daily-rank-check → Run workflow**。`mode` を `production`、`limit` に `2` を入れて実行（各言語 2 語だけ。費用は数セント）
 2. 10〜20 分ほどで終わる → スプレッドシートの `ranks` シートに行が増えていれば成功
 3. Claude が結果を確認し、問題がなければ全キーワードで 1 回実行 → 以後は毎朝 6 時（日本時間）に自動実行
 

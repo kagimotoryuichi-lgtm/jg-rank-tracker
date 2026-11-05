@@ -5,6 +5,8 @@
   python run.py --dry-run       # API を呼ばず tests/fixtures の見本応答で全工程を通す
   python run.py --limit 2       # キーワードを各言語 2 語に絞る（費用を抑えた試運転）
   python run.py --no-yahoo      # Yahoo! JAPAN（Apify）を外す
+  python run.py --sheet-test    # API を呼ばず見本の行をスプレッドシートの ranks_test シートに書く
+                                #（GOOGLE_SA_JSON と SHEET_ID だけで、書き込みの準備を確かめる）
 
 環境変数: DFS_LOGIN, DFS_PASSWORD, APIFY_TOKEN, GOOGLE_SA_JSON, SHEET_ID
 （GitHub Actions の Secrets から渡す。キーをファイルに書かない）
@@ -119,7 +121,11 @@ def run(cfg, args, log=print):
             w.writeheader()
         w.writerows(rows)
     log(f"  CSV に {len(rows)} 行を追記: {out.relative_to(ROOT)}")
-    if not args.dry_run and os.environ.get("SHEET_ID") and os.environ.get("GOOGLE_SA_JSON"):
+    if getattr(args, "sheet_test", False):
+        from tracker.sheets import append_rows
+        append_rows(os.environ["GOOGLE_SA_JSON"], os.environ["SHEET_ID"], rows, worksheet="ranks_test")
+        log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
+    elif not args.dry_run and os.environ.get("SHEET_ID") and os.environ.get("GOOGLE_SA_JSON"):
         from tracker.sheets import append_rows
         append_rows(os.environ["GOOGLE_SA_JSON"], os.environ["SHEET_ID"], rows)
         log("  スプレッドシートに追記")
@@ -134,7 +140,11 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--no-yahoo", action="store_true")
+    ap.add_argument("--sheet-test", action="store_true")
     args = ap.parse_args()
+    if args.sheet_test:  # 見本応答で 1 語ずつだけ（API は呼ばない）
+        args.dry_run = True
+        args.limit = args.limit or 1
     cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     rows, errors = run(cfg, args)
     # 全件エラーのときだけ失敗扱い（GitHub Actions の通知メールが届く）

@@ -58,5 +58,23 @@ class JobsTest(unittest.TestCase):
         self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 2 * 2 * 2 * 2)
 
 
+class SheetTestModeTest(unittest.TestCase):
+    def test_writes_sample_rows_to_ranks_test(self):
+        import argparse
+        import os
+        from unittest import mock
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        args = argparse.Namespace(dry_run=True, limit=1, no_yahoo=False, sheet_test=True)
+        env = {"GOOGLE_SA_JSON": "{}", "SHEET_ID": "dummy"}
+        with mock.patch.dict(os.environ, env), mock.patch("tracker.sheets.append_rows") as ap, \
+                mock.patch.object(run, "ROOT", ROOT):
+            rows, errors = run.run(cfg, args, log=lambda *_: None)
+        ap.assert_called_once()
+        self.assertEqual(ap.call_args.kwargs["worksheet"], "ranks_test")
+        self.assertEqual(len(rows), 4 * 2 + 1)  # google・bing × 4 地点 + Yahoo! JAPAN 1
+        self.assertEqual(errors, [])
+        self.assertTrue(all(r["status"] == "dry-run" for r in rows))
+
+
 if __name__ == "__main__":
     unittest.main()
