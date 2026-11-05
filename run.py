@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 from tracker.parse import parse_dataforseo, parse_yahoo_jp  # noqa: E402
 from tracker.sheets import HEADER  # noqa: E402
 
-JST = dt.timezone(dt.timedelta(hours=9))
+ICT = dt.timezone(dt.timedelta(hours=7))  # 記録の日付はベトナム時間（2026-11-05 から）
 SECRET_ENVS = ("DFS_LOGIN", "DFS_PASSWORD", "APIFY_TOKEN", "SHEET_TOKEN", "SHEET_WEBAPP_URL")
 
 
@@ -81,7 +81,7 @@ def row_of(date, job, parsed, status):
 
 
 def run(cfg, args, log=print):
-    date = dt.datetime.now(JST).strftime("%Y-%m-%d")
+    date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
     jobs = build_jobs(cfg, args.limit, yahoo=not args.no_yahoo)
     if getattr(args, "only_yahoo", False):
         jobs = [j for j in jobs if j["engine"] == "yahoo_jp"]
