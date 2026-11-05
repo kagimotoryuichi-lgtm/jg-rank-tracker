@@ -25,6 +25,25 @@ from tracker.parse import parse_dataforseo, parse_yahoo_jp  # noqa: E402
 from tracker.sheets import HEADER  # noqa: E402
 
 JST = dt.timezone(dt.timedelta(hours=9))
+SECRET_ENVS = ("DFS_LOGIN", "DFS_PASSWORD", "APIFY_TOKEN", "SHEET_TOKEN", "SHEET_WEBAPP_URL")
+
+
+def env(name):
+    """Secrets を読む。貼り付けで入りがちな前後の空白・改行を取り除く（2026-11-05: 改行入りの APIFY_TOKEN で失敗）。"""
+    return (os.environ.get(name) or "").strip()
+
+
+def redact(text):
+    """エラー文から Secrets の値と Apify トークンの形を伏せる（シート・CSV・ログに鍵を残さない）。"""
+    import re
+    s = str(text)
+    for n in SECRET_ENVS:
+        v = env(n)
+        if len(v) >= 6:
+            s = s.replace(v, "***")
+    s = re.sub(r"apify_api_[A-Za-z0-9]+", "apify_api_***", s)
+    s = re.sub(r"(Bearer|Basic)\s+[A-Za-z0-9+/=._-]+", r"\1 ***", s)
+    return s
 
 
 def build_jobs(cfg, limit=None, yahoo=True):
@@ -64,6 +83,8 @@ def row_of(date, job, parsed, status):
 def run(cfg, args, log=print):
     date = dt.datetime.now(JST).strftime("%Y-%m-%d")
     jobs = build_jobs(cfg, args.limit, yahoo=not args.no_yahoo)
+    if getattr(args, "only_yahoo", False):
+        jobs = [j for j in jobs if j["engine"] == "yahoo_jp"]
     dfs_jobs = [j for j in jobs if j["engine"] in ("google", "bing")]
     yj_jobs = [j for j in jobs if j["engine"] == "yahoo_jp"]
     log(f"{date} 計測 {len(jobs)} 件（DataForSEO {len(dfs_jobs)}・Yahoo! JAPAN {len(yj_jobs)}）")
@@ -82,7 +103,7 @@ def run(cfg, args, log=print):
                                "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs}
         ids = {}
         try:
-            d = DataForSEO(os.environ.get("DFS_LOGIN", ""), os.environ.get("DFS_PASSWORD", ""))
+            d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
             for eng in ("google", "bing"):
                 tasks = [task_of[tag_of(j)] for j in dfs_jobs if j["engine"] == eng]
                 if not tasks:
@@ -117,11 +138,11 @@ def run(cfg, args, log=print):
                 parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
                 rows.append(row_of(date, by_tag[tag], parsed, st))
         except Exception as e:  # DataForSEO が失敗しても Yahoo! JAPAN と保存は続ける
-            log(f"  DataForSEO 失敗: {e}")
+            log(f"  DataForSEO 失敗: {redact(e)}")
             done = {tag for _, tag in ids.values()}
             for j in dfs_jobs:
                 if tag_of(j) not in done:
-                    rows.append(row_of(date, j, {}, f"error {e}"[:200]))
+                    rows.append(row_of(date, j, {}, f"error {redact(e)}"[:200]))
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:
@@ -131,15 +152,15 @@ def run(cfg, args, log=print):
                 items = json.loads((ROOT / "tests/fixtures/apify_yahoo_jp.json").read_text(encoding="utf-8"))
             else:
                 from tracker.clients import apify_yahoo_jp
-                items = apify_yahoo_jp(os.environ["APIFY_TOKEN"], cfg["yahoo_jp"]["actor"], kws, cfg["yahoo_jp"]["max_items"])
+                items = apify_yahoo_jp(env("APIFY_TOKEN"), cfg["yahoo_jp"]["actor"], kws, cfg["yahoo_jp"]["max_items"])
             st = "dry-run" if args.dry_run else "ok"
             for j in yj_jobs:
                 p = parse_yahoo_jp(items, j["kw"], cfg["site_domain"])
                 rows.append(row_of(date, j, p, st if p["top10"] else "no-results"))
         except Exception as e:  # Yahoo! JAPAN が失敗しても Google/Bing は保存する
-            log(f"  Yahoo! JAPAN 失敗: {e}")
+            log(f"  Yahoo! JAPAN 失敗: {redact(e)}")
             for j in yj_jobs:
-                rows.append(row_of(date, j, {}, f"error {e}"[:200]))
+                rows.append(row_of(date, j, {}, f"error {redact(e)}"[:200]))
 
     # --- 保存 ---
     out = ROOT / ("data/ranks_dryrun.csv" if args.dry_run else "data/ranks.csv")
@@ -153,11 +174,11 @@ def run(cfg, args, log=print):
     log(f"  CSV に {len(rows)} 行を追記: {out.relative_to(ROOT)}")
     if getattr(args, "sheet_test", False):
         from tracker.sheets import append_rows
-        append_rows(os.environ["SHEET_WEBAPP_URL"], os.environ["SHEET_TOKEN"], rows, worksheet="ranks_test")
+        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows, worksheet="ranks_test")
         log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
-    elif not args.dry_run and os.environ.get("SHEET_WEBAPP_URL") and os.environ.get("SHEET_TOKEN"):
+    elif not args.dry_run and env("SHEET_WEBAPP_URL") and env("SHEET_TOKEN"):
         from tracker.sheets import append_rows
-        append_rows(os.environ["SHEET_WEBAPP_URL"], os.environ["SHEET_TOKEN"], rows)
+        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows)
         log("  スプレッドシートに追記")
     errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
     own = [r for r in rows if r["rank"] not in ("", None)]
@@ -168,7 +189,7 @@ def run(cfg, args, log=print):
 def diagnose_bing(cfg, log=print):
     """Bing の「No Search Results（40102）」の原因を切り分ける。パラメータを変えた少数のタスクを送り、結果を表で出す（記録はしない）。"""
     from tracker.clients import DataForSEO
-    d = DataForSEO(os.environ.get("DFS_LOGIN", ""), os.environ.get("DFS_PASSWORD", ""))
+    d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
     base = [("ジャパングリーンクリニック ハノイ", 2392, "ja"), ("ジャパングリーンクリニック", 2392, "ja"),
             ("Japan Green Clinic Hanoi", 2704, "en"), ("ハノイ 病院", 2704, "ja")]
     variants = [("今の設定", {"device": "desktop", "os": "windows", "depth": 30}),
@@ -204,6 +225,7 @@ def main():
     ap.add_argument("--no-yahoo", action="store_true")
     ap.add_argument("--sheet-test", action="store_true")
     ap.add_argument("--diagnose-bing", action="store_true")
+    ap.add_argument("--only-yahoo", action="store_true")
     args = ap.parse_args()
     if args.diagnose_bing:
         diagnose_bing(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))

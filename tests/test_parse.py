@@ -161,5 +161,39 @@ class RetryNoResultsTest(unittest.TestCase):
         self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 + 1)  # 1 件だけ送り直し
 
 
+class SecretSafetyTest(unittest.TestCase):
+    """2026-11-05: 改行入りの APIFY_TOKEN でヘッダーが不正になり、例外文に鍵がそのまま入ってシートに書かれた。"""
+
+    def test_env_strips_newline_and_redact_masks(self):
+        import os
+        from unittest import mock
+        fake = "apify_api_" + "Ab12" * 8
+        with mock.patch.dict(os.environ, {"APIFY_TOKEN": fake + "\n", "DFS_PASSWORD": "pw-secret-123"}):
+            self.assertEqual(run.env("APIFY_TOKEN"), fake)
+            msg = run.redact(f"Invalid header value b'Bearer {fake}\\n' / pw-secret-123")
+        self.assertNotIn(fake, msg)
+        self.assertNotIn("pw-secret-123", msg)
+        self.assertNotIn("Ab12Ab12", run.redact("token apify_api_Ab12Ab12Ab12 leaked"))
+
+    def test_yahoo_error_row_has_no_token(self):
+        import argparse
+        import os
+        import tempfile
+        from unittest import mock
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        fake = "apify_api_" + "Zz98" * 8
+
+        def boom(token, *a, **k):
+            raise ValueError(f"Invalid header value b'Bearer {token}\\n'")
+        args = argparse.Namespace(dry_run=False, limit=2, no_yahoo=False, sheet_test=False, only_yahoo=True)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("tracker.clients.apify_yahoo_jp", boom), \
+                mock.patch.dict(os.environ, {"APIFY_TOKEN": fake, "SHEET_WEBAPP_URL": ""}), \
+                mock.patch.object(run, "ROOT", Path(tmp)):
+            rows, errors = run.run(cfg, args, log=lambda *_: None)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(r["engine"] == "yahoo_jp" for r in rows))
+        self.assertTrue(all(fake not in r["status"] for r in rows))
+
+
 if __name__ == "__main__":
     unittest.main()
