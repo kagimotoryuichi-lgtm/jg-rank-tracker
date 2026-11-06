@@ -3,7 +3,7 @@ name: daily-rank-check
 on:
   # 毎日の自動実行（2026-11-05 有効化: DataForSEO・Apify の試運転が済んだため）
   schedule:
-    - cron: "0 1 * * *"    # 毎日 01:00 UTC = ベトナム時間 8:00 / 日本時間 10:00（2026-11-05 鍵本さんの指示で変更）
+    - cron: "47 0 * * *"   # 毎日 00:47 UTC = ベトナム時間 7:47 / 日本時間 9:47（2026-11-06 鍵本さんの指示。毎時 0 分は GitHub が混み、11/6 の 8:00 は起動しなかった）
   workflow_dispatch:        # 手動実行（GitHub の Actions 画面の「Run workflow」）
     inputs:
       mode:
