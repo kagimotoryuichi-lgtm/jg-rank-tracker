@@ -195,5 +195,16 @@ class SecretSafetyTest(unittest.TestCase):
         self.assertTrue(all(fake not in r["status"] for r in rows))
 
 
+    def test_rows_recorded_counts_only_ok_rows_of_the_day(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "ranks.csv"
+            lines = ["date,status", "2026-11-07,ok", "2026-11-07,error 40102", "2026-11-06,ok", "2026-11-07,ok"]
+            p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self.assertEqual(run.rows_recorded("2026-11-07", p), 2)
+            self.assertEqual(run.rows_recorded("2026-11-08", p), 0)
+            self.assertEqual(run.rows_recorded("2026-11-07", Path(tmp) / "none.csv"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

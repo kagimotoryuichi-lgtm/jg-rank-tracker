@@ -272,7 +272,7 @@ def main(src, out, day=None):
     st = Counter((r["browser_profile"], r["status"] if r["status"] == "ok" else "失敗") for r in best.values())
     lines = [
         ("この表の見方", True),
-        (f"・計測日 {day}。毎日ベトナム時間 7:47 に自動で計測し、Google スプレッドシート「japangreen_検索順位」の ranks シートに追記している（このファイルはその抜粋）。", False),
+        (f"・計測日 {day}。毎朝ベトナム時間 7 時台に自動で計測し、Google スプレッドシート「japangreen_検索順位」の ranks シートに追記している（このファイルはその抜粋）。", False),
         ("・順位は「通常の検索結果」だけを数えた当院（japangreen.vn）の順位。広告・地図の枠・AI の概要は数えない。30 位までに無ければ「圏外」。", False),
         ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ、Yahoo! JAPAN（PC）。Firefox・Mac の Safari は Chrome（PC）と同じ結果。", False),
         ("・地点は日本＝国単位、ベトナム＝ハノイ市（2026-11-06 から。それ以前のベトナムは国単位なので比べない）。"

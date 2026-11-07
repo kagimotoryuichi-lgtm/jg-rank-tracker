@@ -47,7 +47,20 @@
 ## 5. 試運転
 1. リポジトリの **Actions → daily-rank-check → Run workflow**。`mode` を `production`、`limit` に `2` を入れて実行（各言語 2 語だけ。費用は数セント）
 2. 10〜20 分ほどで終わる → スプレッドシートの `ranks` シートに行が増えていれば成功
-3. Claude が結果を確認し、問題がなければ全キーワードで 1 回実行 → 以後は毎朝 7:47（ベトナム時間）に自動実行
+3. Claude が結果を確認し、問題がなければ全キーワードで 1 回実行 → 以後は毎朝 7 時台（ベトナム時間）に自動実行（5.5 の Apps Script から起動）
+
+## 5.5 毎朝の起動を Apps Script から行う（2026-11-07 から）
+GitHub の定時実行（schedule）が 11/6・11/7 と起動しなかったため、Google 側の時計から毎朝「実行して」と頼む。GitHub の定時実行は 9:47（VN）の予備として残し、その日の計測が済んでいれば何もしない。
+1. GitHub 右上のアイコン → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**
+   - Token name: `jg-rank-tracker 朝の起動`／Expiration: 1 年（期限の日を Vault に書いておく）
+   - Repository access: **Only select repositories** → `jg-rank-tracker`
+   - Permissions → Repository permissions → **Actions: Read and write**（ほかは触らない）
+   - Generate token → 表示された鍵をコピー（チャット・Vault には書かない）
+2. スプレッドシート「japangreen_検索順位」→ 拡張機能 → Apps Script → 左の「＋」→ スクリプト → 名前 `Trigger` → `apps-script/Trigger.gs` の中身を貼って保存
+3. 左の歯車「プロジェクトの設定」→ 下の **スクリプト プロパティ** → 「スクリプト プロパティを追加」→ プロパティ `GH_TOKEN`、値に 1 の鍵 → 保存（既にある `TOKEN` は消さない）
+4. エディタに戻り、上の関数で `testDispatch` を選んで実行 → 承認（前回と同じ「詳細」→「安全ではないページに移動」）→ 実行ログに「sheet-test の実行を頼みました」。GitHub の Actions に sheet-test の実行が出れば成功（費用なし）
+5. 関数 `installDailyTrigger` を実行 → 左の時計「トリガー」に dispatchDaily（日付ベースのタイマー・午前 7〜8 時）が 1 つあれば完了
+- 失敗すると Google から「実行に失敗しました」のメールが届く。鍵の期限切れもこれで分かる
 
 ## 6. ダッシュボード（Looker Studio）
 データが数日分たまったら、Claude と一緒に作ります（https://lookerstudio.google.com/ ・無料）。

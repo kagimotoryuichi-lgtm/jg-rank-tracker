@@ -3,7 +3,9 @@ name: daily-rank-check
 on:
   # 毎日の自動実行（2026-11-05 有効化: DataForSEO・Apify の試運転が済んだため）
   schedule:
-    - cron: "47 0 * * *"   # 毎日 00:47 UTC = ベトナム時間 7:47 / 日本時間 9:47（2026-11-06 鍵本さんの指示。毎時 0 分は GitHub が混み、11/6 の 8:00 は起動しなかった）
+    # 2026-11-07: GitHub の定時実行は 11/6・11/7 とも起動しなかった。毎朝の起動は Apps Script（apps-script/Trigger.gs、7 時台 VN）に移し、
+    # これは予備（その日の計測が済んでいれば run.py --skip-if-done で何もしない）
+    - cron: "47 2 * * *"   # 02:47 UTC = ベトナム時間 9:47
   workflow_dispatch:        # 手動実行（GitHub の Actions 画面の「Run workflow」）
     inputs:
       mode:
@@ -46,7 +48,9 @@ jobs:
           SHEET_TOKEN: ${{ secrets.SHEET_TOKEN }}
           PYTHONUNBUFFERED: "1"     # ログを途中経過から表示する
         run: |
-          if [ "${{ github.event.inputs.mode }}" = "sheet-test" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            python run.py --skip-if-done 100   # 予備: Apps Script からの朝の実行で済んでいれば何もしない
+          elif [ "${{ github.event.inputs.mode }}" = "sheet-test" ]; then
             python run.py --sheet-test
           elif [ "${{ github.event.inputs.mode }}" = "bing-diagnose" ]; then
             python run.py --diagnose-bing

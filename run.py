@@ -218,6 +218,15 @@ def diagnose_bing(cfg, log=print):
         log(f"{vname} | {kw} | {loc} | {t.get('status_code')} {t.get('status_message')} | {len(items)} | {len(org)} | {c}")
 
 
+def rows_recorded(date, path=None):
+    """data/ranks.csv に、その日付の status=ok の行が何件あるか（予備の定時実行で二重に測らないため）"""
+    path = path or ROOT / "data/ranks.csv"
+    if not Path(path).exists():
+        return 0
+    with open(path, encoding="utf-8", newline="") as f:
+        return sum(1 for r in csv.DictReader(f) if r.get("date") == date and r.get("status") == "ok")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -226,7 +235,15 @@ def main():
     ap.add_argument("--sheet-test", action="store_true")
     ap.add_argument("--diagnose-bing", action="store_true")
     ap.add_argument("--only-yahoo", action="store_true")
+    ap.add_argument("--skip-if-done", type=int, metavar="N",
+                    help="今日（ベトナム時間）の取得済みの行が N 件以上あれば何もしない（予備の定時実行用）")
     args = ap.parse_args()
+    if args.skip_if_done:
+        today = dt.datetime.now(ICT).strftime("%Y-%m-%d")
+        n = rows_recorded(today)
+        if n >= args.skip_if_done:
+            print(f"{today} は計測済み（{n} 件）なので何もしない")
+            return
     if args.diagnose_bing:
         diagnose_bing(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
         return
