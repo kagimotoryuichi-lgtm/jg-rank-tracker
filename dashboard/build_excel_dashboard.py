@@ -26,6 +26,7 @@ CFG = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
 FONT = "Meiryo UI"
 NAVY, GREEN = "2F4078", "249835"
 CARD_BG = "F3F6FA"
+CMP = "前日"  # 比べる日が前の暦日でないとき main で「前回」にする（2026-11-10）
 UP, DOWN = "1E8E3E", "D0342C"
 BANDS = [("1〜3 位", "2E9E5B", "FFFFFF"), ("4〜10 位", "9ED8B2", "1C4A2E"), ("11〜30 位", "FFE38F", "5C4700")]
 OUT_BG, OUT_FG = "EEF0F3", "9AA0A8"
@@ -153,11 +154,11 @@ def card(ws, row, c1, label, value, unit, delta, sub=""):
     ws.merge_cells(start_row=row + 3, start_column=c1, end_row=row + 3, end_column=c2)
     x = ws.cell(row + 3, c1)
     if delta is None:
-        x.value, x.font = sub or "前日のデータなし", F(size=9, color="8A8F98")
+        x.value, x.font = sub or f"{CMP}のデータなし", F(size=9, color="8A8F98")
     else:
         mark = "▲" if delta > 0 else "▼" if delta < 0 else "±"
         col = UP if delta > 0 else DOWN if delta < 0 else "8A8F98"
-        x.value = f"前日比 {mark}{abs(delta)}" + (f"（{sub}）" if sub else "")
+        x.value = f"{CMP}比 {mark}{abs(delta)}" + (f"（{sub}）" if sub else "")
         x.font = F(size=9, bold=True, color=col)
     x.alignment = CENTER
 
@@ -310,7 +311,7 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     card(ws, 4, 11, "取得できた割合", rate, "%", None, sub=f"{cur['got']} / {tot} 組（失敗 {tot - cur['got']}）")
 
     # --- 前日からの主な変化（9〜14 行目） ---
-    ws.cell(9, 1, "前日からの主な変化").font = F(bold=True, size=12, color=NAVY)
+    ws.cell(9, 1, f"{CMP}（{int(prev_day[5:7])}/{int(prev_day[8:])}）からの主な変化" if prev_day else "前日からの主な変化").font = F(bold=True, size=12, color=NAVY)
     ws.cell(9, 2, "変化の大きい順に 4 件（圏外は 31 位とみなす）").font = F(size=8, color="8A8F98")
     up, down = movers(best, prev) if prev else ([], [])
     for j, (head, items, col, c0) in enumerate((("上がった", up, UP, 1), ("下がった", down, DOWN, 7))):
@@ -332,7 +333,7 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
                     TextBlock(InlineFont(rFont=FONT, sz=8, color="8A8F98"), f"　{short(loc, p)}　"),
                     TextBlock(InlineFont(rFont=FONT, sz=9, b=True, color=col), f"{rank_text(a)} → {rank_text(b)}")])
             elif i == 0:
-                x.value, x.font = ("前日のデータなし" if not prev else "なし"), F(size=9, color="8A8F98")
+                x.value, x.font = (f"{CMP}のデータなし" if not prev else "なし"), F(size=9, color="8A8F98")
             x.alignment = Alignment(vertical="center", indent=1)
             ws.row_dimensions[r].height = 18
 
@@ -353,11 +354,18 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     g.append([])
     g.append(["日付"] + [PROFILE_LABEL[p] for p in CFG["profiles"]])
     trend_head = g.max_row
+    blank = []  # 計測できなかった（そのブラウザの取得が 0 件の）日 → 0 ではなく空白にする（2026-11-10）
     for dd in [x for x in days if x <= day][-30:]:
         b = pick_latest(rows, dd)
-        g.append([f"{int(dd[5:7])}/{int(dd[8:])}"] +
-                 [sum(1 for key in combos_all() if key[0] == p and rank_of(b.get(key)) not in (False, None))
-                  for p in CFG["profiles"]])
+        vals = []
+        for p in CFG["profiles"]:
+            keys = [key for key in combos_all() if key[0] == p]
+            if not any(rank_of(b.get(key)) is not False for key in keys):
+                vals.append(None)
+                blank.append((dd, PROFILE_LABEL[p]))
+                continue
+            vals.append(sum(1 for key in keys if rank_of(b.get(key)) not in (False, None)))
+        g.append([f"{int(dd[5:7])}/{int(dd[8:])}"] + vals)
     trend_last = g.max_row
     g.column_dimensions["A"].width = 32
 
@@ -399,14 +407,21 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     lc.y_axis.delete = False
     lc.y_axis.scaling.min = 0
     lc.legend.position = "t"
+    lc.display_blanks = "gap"
     ws.cell(16, 8, "30 位以内に入った組数の推移（ブラウザ別）").font = F(bold=True, size=11, color=NAVY)
     ws.add_chart(lc, "H17")
     note = "※ ベトナムは 11/6 からハノイ市で計測（11/5 は国単位）。11/5 の Yahoo! JAPAN は設定の不備で 2 語のみ"
     ws.cell(44, 1, note).font = F(size=8, color="8A8F98")
+    if blank:
+        bd = OrderedDict()
+        for dd, lab in blank:
+            bd.setdefault(f"{int(dd[5:7])}/{int(dd[8:])}", []).append(lab)
+        txt = "／".join(f"{k}＝{'・'.join(v)}" for k, v in bd.items())
+        ws.cell(45, 1, f"※ 計測できなかった日は空白（{txt}）。DataForSEO の残高切れなど").font = F(size=8, color="8A8F98")
 
     # --- 色分け表 ---
     nxt = 46
-    ws.cell(nxt, 1, "色の見方（表の中の ▲▼ は前日からの変化）").font = F(bold=True, size=9, color="555B66")
+    ws.cell(nxt, 1, f"色の見方（表の中の ▲▼ は{CMP}（{int(prev_day[5:7])}/{int(prev_day[8:])}）からの変化）" if prev_day else "色の見方（表の中の ▲▼ は前日からの変化）").font = F(bold=True, size=9, color="555B66")
     legend(ws, nxt, 3, [(BANDS[0][0], BANDS[0][1], BANDS[0][2]), (BANDS[1][0], BANDS[1][1], BANDS[1][2]),
                         (BANDS[2][0], BANDS[2][1], BANDS[2][2]), (OUT, OUT_BG, OUT_FG), (FAIL, FAIL_BG, FAIL_FG),
                         ("▲ 上がった", "FFFFFF", UP), ("▼ 下がった", "FFFFFF", DOWN), ("NEW 圏外から", "FFFFFF", UP)])
@@ -443,8 +458,13 @@ def main(src, out, day=None):
     days = sorted({r["date"] for r in rows})
     day = day or days[-1]
     best = pick_latest(rows, day)
+    # 比べる日: 取得できた割合が半分未満の日（計測できなかった日）は飛ばす（2026-11-10: 11/8・11/9 は Google・Bing が全件失敗）
     before = [x for x in days if x < day]
-    prev_day = before[-1] if before else None
+    usable = [x for x in before if (lambda m: m["total"] and m["got"] * 2 >= m["total"])(metrics(pick_latest(rows, x)))]
+    prev_day = usable[-1] if usable else None
+    global CMP
+    if prev_day and (dt.date.fromisoformat(day) - dt.date.fromisoformat(prev_day)).days > 1:
+        CMP = "前回"
     prev = pick_latest(rows, prev_day) if prev_day else {}
     kw_ja, kw_en = CFG["keywords"]["ja"], CFG["keywords"]["en"]
 
