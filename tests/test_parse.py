@@ -129,8 +129,8 @@ class RetryNoResultsTest(unittest.TestCase):
             def __init__(self, *a):
                 self.n = 0
 
-            def post_tasks(self, eng, tasks):
-                out = []
+            def post_tasks(self, eng, tasks, out=None, failed=None):
+                out = [] if out is None else out
                 for t in tasks:
                     self.n += 1
                     posted.append((eng, t["tag"]))
@@ -145,8 +145,8 @@ class RetryNoResultsTest(unittest.TestCase):
         first_bing = []
         orig_post = FakeDFS.post_tasks
 
-        def post(self, eng, tasks):
-            out = orig_post(self, eng, tasks)
+        def post(self, eng, tasks, out=None, failed=None):
+            out = orig_post(self, eng, tasks, out, failed)
             if eng == "bing" and not first_bing:
                 first_bing.append(out[0][1])
             return out

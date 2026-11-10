@@ -5,6 +5,7 @@
   python run.py --dry-run       # API を呼ばず tests/fixtures の見本応答で全工程を通す
   python run.py --limit 2       # キーワードを各言語 2 語に絞る（費用を抑えた試運転）
   python run.py --no-yahoo      # Yahoo! JAPAN（Apify）を外す
+  python run.py --recover       # 登録済みで未回収の今日の Google・Bing の結果を回収（新たな課金なし）
   python run.py --sheet-test    # API を呼ばず見本の行をスプレッドシートの ranks_test シートに書く
                                 #（SHEET_WEBAPP_URL と SHEET_TOKEN だけで、書き込みの準備を確かめる）
 
@@ -80,6 +81,27 @@ def row_of(date, job, parsed, status):
     }
 
 
+def save(rows, args, log=print):
+    """CSV（data/ranks.csv）とスプレッドシートに追記する。"""
+    out = getattr(args, "out", None) or ROOT / ("data/ranks_dryrun.csv" if args.dry_run else "data/ranks.csv")
+    new = not out.exists()
+    out.parent.mkdir(exist_ok=True)
+    with out.open("a", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=HEADER)
+        if new:
+            w.writeheader()
+        w.writerows(rows)
+    log(f"  CSV に {len(rows)} 行を追記: {out}")
+    if getattr(args, "sheet_test", False):
+        from tracker.sheets import append_rows
+        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows, worksheet="ranks_test")
+        log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
+    elif not args.dry_run and env("SHEET_WEBAPP_URL") and env("SHEET_TOKEN"):
+        from tracker.sheets import append_rows
+        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows)
+        log("  スプレッドシートに追記")
+
+
 def run(cfg, args, log=print):
     date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
     jobs = build_jobs(cfg, args.limit, yahoo=not args.no_yahoo)
@@ -102,47 +124,66 @@ def run(cfg, args, log=print):
                                "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
                                "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs}
         ids = {}
-        try:
-            d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
-            for eng in ("google", "bing"):
-                tasks = [task_of[tag_of(j)] for j in dfs_jobs if j["engine"] == eng]
-                if not tasks:
-                    continue
-                for tag, tid, c in d.post_tasks(eng, tasks):
-                    ids[tid] = (eng, tag)
-                    cost += float(c or 0)
+        d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
+        # 2026-11-10: Bing の登録が 402 で断られたとき、登録済み（課金済み）の Google まで捨てていた。
+        # エンジンごとに失敗を閉じ込め、登録できた分は必ず結果を取りに行く。
+        for eng in ("google", "bing"):
+            eng_jobs = [j for j in dfs_jobs if j["engine"] == eng]
+            if not eng_jobs:
+                continue
+            posted, failed = [], []
+            try:
+                d.post_tasks(eng, [task_of[tag_of(j)] for j in eng_jobs], posted, failed)
+            except Exception as e:
+                log(f"  DataForSEO {eng} の登録に失敗: {redact(e)}")
+                done = {tag for tag, _, _ in posted} | {tag for tag, _ in failed}
+                failed += [(tag_of(j), redact(e)) for j in eng_jobs if tag_of(j) not in done]
+            for tag, tid, c in posted:
+                ids[tid] = (eng, tag)
+                cost += float(c or 0)
+            for tag, msg in failed:
+                rows.append(row_of(date, by_tag[tag], {}, f"error {msg}"[:200]))
+        if ids:
             log(f"  DataForSEO に {len(ids)} 件を登録（費用 ${cost:.4f}）")
-            got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
-            # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ 最大 2 回まで送り直す
-            for attempt in range(cfg.get("retry_no_results", 2)):
-                retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if got.get(tid, {}).get("status_code") == 40102]
-                if not retry:
-                    break
-                log(f"  結果なし（40102）を送り直し {attempt + 1} 回目: {len(retry)} 件")
-                new = {}
-                for eng in ("google", "bing"):
-                    ts = [task_of[tag] for _, e, tag in retry if e == eng]
-                    if ts:
-                        for tag, tid2, c in d.post_tasks(eng, ts):
-                            new[tid2] = (eng, tag)
-                            cost += float(c or 0)
-                got2 = d.wait_all({tid: e for tid, (e, _) in new.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
-                for tid, _, _ in retry:
-                    ids.pop(tid)
-                ids.update(new)
-                got.update(got2)
+            got = {}
+            try:
+                got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+                # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ 最大 2 回まで送り直す
+                for attempt in range(cfg.get("retry_no_results", 2)):
+                    retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if got.get(tid, {}).get("status_code") == 40102]
+                    if not retry:
+                        break
+                    log(f"  結果なし（40102）を送り直し {attempt + 1} 回目: {len(retry)} 件")
+                    new = {}
+                    for eng in ("google", "bing"):
+                        ts = [task_of[tag] for _, e, tag in retry if e == eng]
+                        if ts:
+                            posted2 = []
+                            try:
+                                d.post_tasks(eng, ts, posted2, [])
+                            except Exception as e:  # 送り直しの失敗は元の 40102 の結果を残す
+                                log(f"  送り直しの登録に失敗（{eng}）: {redact(e)}")
+                            for tag, tid2, c in posted2:
+                                new[tid2] = (eng, tag)
+                                cost += float(c or 0)
+                    got2 = d.wait_all({tid: e for tid, (e, _) in new.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+                    resent = {t for _, t in new.values()}
+                    for tid, _, tag in retry:
+                        if tag in resent:
+                            ids.pop(tid)
+                    ids.update(new)
+                    got.update(got2)
+            except Exception as e:  # 取得途中の失敗: 取れた分は残し、残りをエラーにする
+                log(f"  DataForSEO の結果取得に失敗: {redact(e)}")
             log(f"  DataForSEO の費用（送り直しを含む）${cost:.4f}")
             for tid, (eng, tag) in ids.items():
-                t = got.get(tid, {})
+                t = got.get(tid)
+                if t is None:
+                    rows.append(row_of(date, by_tag[tag], {}, f"error 結果未取得 task_id={tid}"))
+                    continue
                 st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
                 parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
                 rows.append(row_of(date, by_tag[tag], parsed, st))
-        except Exception as e:  # DataForSEO が失敗しても Yahoo! JAPAN と保存は続ける
-            log(f"  DataForSEO 失敗: {redact(e)}")
-            done = {tag for _, tag in ids.values()}
-            for j in dfs_jobs:
-                if tag_of(j) not in done:
-                    rows.append(row_of(date, j, {}, f"error {redact(e)}"[:200]))
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:
@@ -162,27 +203,51 @@ def run(cfg, args, log=print):
             for j in yj_jobs:
                 rows.append(row_of(date, j, {}, f"error {redact(e)}"[:200]))
 
-    # --- 保存 ---
-    out = ROOT / ("data/ranks_dryrun.csv" if args.dry_run else "data/ranks.csv")
-    new = not out.exists()
-    out.parent.mkdir(exist_ok=True)
-    with out.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=HEADER)
-        if new:
-            w.writeheader()
-        w.writerows(rows)
-    log(f"  CSV に {len(rows)} 行を追記: {out.relative_to(ROOT)}")
-    if getattr(args, "sheet_test", False):
-        from tracker.sheets import append_rows
-        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows, worksheet="ranks_test")
-        log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
-    elif not args.dry_run and env("SHEET_WEBAPP_URL") and env("SHEET_TOKEN"):
-        from tracker.sheets import append_rows
-        append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows)
-        log("  スプレッドシートに追記")
+    save(rows, args, log)
     errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
     own = [r for r in rows if r["rank"] not in ("", None)]
     log(f"  完了: 当院が {len(own)}/{len(rows)} 件で 30 位以内・エラー {len(errors)} 件")
+    return rows, errors
+
+
+def recover(cfg, args, log=print):
+    """登録済み（課金済み）なのに取りに行けなかった今日の Google・Bing の結果を回収して記録する（2026-11-10 追加）。
+    DataForSEO の tasks_ready（結果ができていて未回収のタスク・直近 3 日）から、今日（ベトナム時間）に登録した分を
+    検索条件（tag）ごとに最新の 1 件だけ取り、task_get で結果を読む。新たな課金は無い。"""
+    from tracker.clients import DataForSEO
+    date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
+    by_tag = {tag_of(j): j for j in build_jobs(cfg, yahoo=False)}
+    d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
+    pick = {}  # tag -> (posted, id, engine)
+    for eng in ("google", "bing"):
+        ready = d.tasks_ready(eng)
+        log(f"  {eng}: 未回収のタスク {len(ready)} 件")
+        for r in ready:
+            tag = r.get("tag")
+            if tag not in by_tag or by_tag[tag]["engine"] != eng:
+                continue
+            try:
+                posted = dt.datetime.strptime(r.get("date_posted", ""), "%Y-%m-%d %H:%M:%S %z")
+            except ValueError:
+                continue
+            if posted.astimezone(ICT).strftime("%Y-%m-%d") != date:
+                continue
+            if tag not in pick or posted > pick[tag][0]:
+                pick[tag] = (posted, r["id"], eng)
+    log(f"{date} 回収 {len(pick)} 件（今日の登録分・検索条件ごとに最新 1 件）")
+    if not pick:
+        return [], []
+    got = d.wait_all({tid: eng for _, tid, eng in pick.values()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
+    rows = []
+    for tag, (_, tid, eng) in pick.items():
+        t = got.get(tid, {})
+        st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
+        parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
+        rows.append(row_of(date, by_tag[tag], parsed, st))
+    save(rows, args, log)
+    errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
+    own = [r for r in rows if r["rank"] not in ("", None)]
+    log(f"  回収完了: {len(rows)} 行（当院が 30 位以内 {len(own)} 件・エラー {len(errors)} 件）")
     return rows, errors
 
 
@@ -235,6 +300,8 @@ def main():
     ap.add_argument("--sheet-test", action="store_true")
     ap.add_argument("--diagnose-bing", action="store_true")
     ap.add_argument("--only-yahoo", action="store_true")
+    ap.add_argument("--recover", action="store_true",
+                    help="登録済みで未回収の今日の Google・Bing の結果を回収して記録する（新たな課金なし）")
     ap.add_argument("--skip-if-done", type=int, metavar="N",
                     help="今日（ベトナム時間）の取得済みの行が N 件以上あれば何もしない（予備の定時実行用）")
     args = ap.parse_args()
@@ -244,6 +311,9 @@ def main():
         if n >= args.skip_if_done:
             print(f"{today} は計測済み（{n} 件）なので何もしない")
             return
+    if args.recover:
+        rows, errors = recover(json.loads((ROOT / "config.json").read_text(encoding="utf-8")), args)
+        sys.exit(1 if not rows or len(errors) == len(rows) else 0)
     if args.diagnose_bing:
         diagnose_bing(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
         return

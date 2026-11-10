@@ -34,17 +34,30 @@ class DataForSEO:
         tok = base64.b64encode(f"{login}:{password}".encode()).decode()
         self.h = {"Authorization": "Basic " + tok}
 
-    def post_tasks(self, engine, tasks):
-        """tasks: [{keyword, location_code, language_code, device, depth, tag}] → [(tag, id, cost)]"""
-        out = []
+    def post_tasks(self, engine, tasks, posted=None, failed=None):
+        """tasks: [{keyword, location_code, language_code, device, depth, tag}]
+        登録できた分を posted に (tag, id, cost)、タスク単位で断られた分を failed に (tag, 理由) で順に足す。
+        通信や HTTP の失敗は例外にする（それまでに登録できた分は posted に残る＝課金済みの結果を取りに行ける）。"""
+        posted = [] if posted is None else posted
+        failed = [] if failed is None else failed
         for i in range(0, len(tasks), 100):  # 1 回 100 件まで
             j = _req(f"{DFS}/{engine}/organic/task_post", "POST", tasks[i:i + 100], self.h)
             if j.get("status_code") != 20000:
                 raise RuntimeError(f"task_post {engine}: {j.get('status_code')} {j.get('status_message')}")
             for t in j.get("tasks", []):
-                if t.get("status_code") != 20100:
-                    raise RuntimeError(f"task_post {engine} task: {t.get('status_code')} {t.get('status_message')}")
-                out.append((t["data"]["tag"], t["id"], t.get("cost", 0)))
+                tag = (t.get("data") or {}).get("tag")
+                if t.get("status_code") == 20100:
+                    posted.append((tag, t["id"], t.get("cost", 0)))
+                elif tag:
+                    failed.append((tag, f"{t.get('status_code')} {t.get('status_message')}"))
+        return posted
+
+    def tasks_ready(self, engine):
+        """結果ができていて、まだ取りに来ていないタスク（直近 3 日・最大 1000 件）。[{id, tag, date_posted, …}]"""
+        j = _req(f"{DFS}/{engine}/organic/tasks_ready", "GET", None, self.h)
+        out = []
+        for t in j.get("tasks") or []:
+            out += t.get("result") or []
         return out
 
     def get_task(self, engine, task_id):
