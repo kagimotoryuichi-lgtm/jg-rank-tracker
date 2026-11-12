@@ -23,7 +23,7 @@ def _brand_match(text, brand_names):
 
 
 def _urls_in(obj):
-    """入れ子の dict・list から url / domain を全部拾う（AI 概要・他の人はこちらも質問の中の参照元）。"""
+    """入れ子の dict・list から url / domain を全部拾う（他の人はこちらも質問の中の参照元）。"""
     out = []
     if isinstance(obj, dict):
         for k in ("url", "domain"):
@@ -54,25 +54,21 @@ def competitor_ranks(ranked, competitors):
     return out
 
 
-def serp_features(items, site_domain, engine, ai=True):
-    """AI 概要・強調スニペット・他の人はこちらも質問。枠が出なかったときは空欄（出て当院が無ければ FALSE）。
-    AI 概要は Google だけ（Bing・Yahoo! JAPAN は空欄）。ai=False（2026-11-12 から取得しない）なら AI 概要は常に空欄。"""
+def serp_features(items, site_domain, engine):
+    """強調スニペット・他の人はこちらも質問。枠が出なかったときは空欄（出て当院が無ければ FALSE）。
+    AI 概要は 2026-11-12 から取得しない（鍵本さんの決定・列も削除）。"""
     def own_in(kind):
         found = [i for i in items if i.get("type") == kind]
         if not found:
             return ""
         return _tf(any(is_own(u, site_domain) for u in _urls_in(found)))
-    ai_on = ai and engine == "google"
-    found_ai = [i for i in items if i.get("type") == "ai_overview"] if ai_on else []
     return {
-        "ai_overview": _tf(found_ai) if ai_on else "",
-        "ai_overview_own": (_tf(any(is_own(u, site_domain) for u in _urls_in(found_ai))) if found_ai else "") if ai_on else "",
         "featured_snippet_own": own_in("featured_snippet"),
         "paa_own": own_in("people_also_ask"),
     }
 
 
-def parse_dataforseo(task, site_domain, brand_names, competitors=None, engine="google", ai=True):
+def parse_dataforseo(task, site_domain, brand_names, competitors=None, engine="google"):
     """DataForSEO の task_get/advanced の task 1 件 → 結果 dict。
 
     rank: 通常の検索結果（organic）だけで数えた順位（rank_group）。広告・地図枠は数えない
@@ -103,7 +99,7 @@ def parse_dataforseo(task, site_domain, brand_names, competitors=None, engine="g
         "check_url": res.get("check_url", ""),
     }
     out.update(competitor_ranks([(i.get("rank_group"), i.get("url") or i.get("domain")) for i in organic], competitors))
-    out.update(serp_features(items, site_domain, engine, ai))
+    out.update(serp_features(items, site_domain, engine))
     return out
 
 

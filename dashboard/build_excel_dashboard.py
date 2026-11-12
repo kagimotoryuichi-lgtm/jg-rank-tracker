@@ -348,7 +348,7 @@ def build_extra(wb, rows, days, day, best):
 
     # --- 3. 競合の順位 ---
     comps = CFG.get("competitors", [])
-    measured = any((rec.get("ai_overview") or "") != "" or any((rec.get("rank_" + c["id"]) or "") != "" for c in comps)
+    measured = any(any((rec.get("rank_" + c["id"]) or "") != "" for c in comps)
                    for rec in best.values())
     r += 1
     ws.cell(r, 1, "3. 競合との比較（通常の検索結果・今日）").font = F(bold=True, size=11, color=NAVY)
@@ -414,7 +414,7 @@ def build_extra(wb, rows, days, day, best):
             r += 1
         r += 1
 
-    # --- 4. AI 概要・強調スニペット・他の人はこちらも質問 ---
+    # --- 4. 強調スニペット・他の人はこちらも質問（AI 概要は 2026-11-12 に取りやめ） ---
     ws.cell(r, 1, "4. 検索結果の枠に当院が出たか（今日・全部の組）").font = F(bold=True, size=11, color=NAVY)
     r += 1
     for i, h in ((1, "枠"), (3, "枠が出た組"), (4, "うち当院あり")):
@@ -423,13 +423,10 @@ def build_extra(wb, rows, days, day, best):
     style_header(ws, r, 1, 4)
     r += 1
     boxes = (
-        ("AI による概要（Google のみ）", lambda x: x.get("ai_overview") == "TRUE", lambda x: x.get("ai_overview_own") == "TRUE"),
         ("強調スニペット（一番上の答えの枠）", lambda x: x.get("featured_snippet_own") in ("TRUE", "FALSE"),
          lambda x: x.get("featured_snippet_own") == "TRUE"),
         ("他の人はこちらも質問", lambda x: x.get("paa_own") in ("TRUE", "FALSE"), lambda x: x.get("paa_own") == "TRUE"),
     )
-    if not CFG.get("ai_overview", False):  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
-        boxes = boxes[1:]
     for label, shown, own in boxes:
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
         _cell(ws, r, 1, label, align=LEFT)
@@ -437,15 +434,6 @@ def build_extra(wb, rows, days, day, best):
         _cell(ws, r, 3, sum(1 for x in oks if shown(x)))
         _cell(ws, r, 4, sum(1 for x in oks if own(x)), bold=True, color=GREEN)
         r += 1
-    cited = [rec for rec in oks if rec.get("ai_overview_own") == "TRUE"] if CFG.get("ai_overview", False) else []
-    if cited:
-        r += 1
-        ws.cell(r, 1, "AI による概要に当院が引用された組").font = F(bold=True, size=10, color=NAVY)
-        r += 1
-        for rec in cited:
-            _cell(ws, r, 1, rec["keyword"], align=LEFT)
-            _cell(ws, r, 2, short(rec["locale"], rec["browser_profile"]), size=8, color="555B66", align=LEFT)
-            r += 1
 
 def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     kw_ja, kw_en = CFG["keywords"]["ja"], CFG["keywords"]["en"]
@@ -709,7 +697,7 @@ def main(src, out, day=None):
     d = wb.create_sheet("データ", 3)
     cols = ["date", "browser_profile", "engine", "device", "os", "locale", "keyword", "group", "rank", "url",
             "local_rank", "has_local_pack", "top10", "status", "check_url",
-            "ai_overview", "ai_overview_own", "featured_snippet_own", "paa_own"] + ["rank_" + c["id"] for c in CFG.get("competitors", [])]
+            "featured_snippet_own", "paa_own"] + ["rank_" + c["id"] for c in CFG.get("competitors", [])]
     d.append(cols)
     style_header(d, 1, 1, len(cols))
     for rec in best.values():

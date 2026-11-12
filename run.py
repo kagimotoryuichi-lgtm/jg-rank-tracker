@@ -128,8 +128,7 @@ def migrate_csv(path):
 
 
 def parse_dfs(t, cfg, engine):
-    return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine,
-                            ai=cfg.get("ai_overview", False))
+    return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine)
 
 
 def run(cfg, args, log=print):
@@ -152,9 +151,7 @@ def run(cfg, args, log=print):
         by_tag = {tag_of(j): j for j in dfs_jobs}
         task_of = {tag_of(j): {"keyword": j["kw"], "location_code": j["locale"]["location_code"],
                                "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-                               "depth": cfg["depth"], "tag": tag_of(j),
-                               # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）。config の ai_overview が true のときだけ付ける
-                               **({"load_async_ai_overview": True} if j["engine"] == "google" and cfg.get("ai_overview") else {})}
+                               "depth": cfg["depth"], "tag": tag_of(j)}  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
                    for j in dfs_jobs}
         ids = {}
         d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))

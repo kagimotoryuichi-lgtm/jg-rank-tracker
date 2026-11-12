@@ -4,8 +4,7 @@
   "_note_locations": "2026-11-06 から VN-ja・VN-en の地点を国（2704）→ハノイ市（1028580 \"Hanoi,Ha Noi,Vietnam\"、Google・Bing とも対応）に変更。日本は国（2392）のまま",
   "depth": 30,
   "_note_iphone": "DataForSEO はブラウザを選べない（端末と OS だけ）。iPhone の Safari と Chrome は同じ Google のスマホ（iOS）の結果になるので、iphone の 1 本で両方を表す（2026-11-12）",
-  "ai_overview": false,
-  "_note_ai_overview": "AI 概要（AI による概要）は取得しない（2026-11-12 鍵本さんの決定）。false のとき load_async_ai_overview を付けず、ai_overview・ai_overview_own は空欄。2026-11-12 の 1 日だけ取得した値は CSV・シートに残る",
+  "_note_ai_overview": "AI 概要（AI による概要）は取得しない（2026-11-12 鍵本さんの決定）。列 ai_overview・ai_overview_own も CSV・シートから削除した",
   "competitors": [
     {"id": "sakura", "label": "さくら",   "domains": ["sakurahanoi.com"]},
     {"id": "dym",    "label": "DYM",      "domains": ["jp-dymmedicalcenter.com.vn", "dym.asia"]},

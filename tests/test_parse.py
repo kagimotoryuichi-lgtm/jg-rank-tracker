@@ -231,30 +231,24 @@ class FeaturesTest(unittest.TestCase):
         self.assertEqual(p["rank_dym"], 1)  # 2 つのドメインのうち上の方
         self.assertEqual(p["rank_sakura"], "")  # 圏外は空欄
 
-    def test_ai_overview_cites_own(self):
-        items = [{"type": "ai_overview", "items": [{"type": "ai_overview_element", "references": [
-                    {"type": "ai_overview_reference", "domain": "www.japangreen.vn", "url": "https://www.japangreen.vn/x/"}]}]},
-                 {"type": "organic", "rank_group": 1, "url": "https://sakurahanoi.com/"}]
-        p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
-        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("TRUE", "TRUE"))
-        self.assertEqual(p["rank_sakura"], 1)
-        self.assertEqual((p["featured_snippet_own"], p["paa_own"]), ("", ""))  # 枠が出ていないときは空欄
-
-    def test_ai_overview_without_own_and_other_boxes(self):
-        items = [{"type": "ai_overview", "references": [{"url": "https://dym.asia/"}]},
+    def test_boxes_without_ai_overview(self):
+        """2026-11-12: AI 概要は取得しない（列も削除）。AI 概要が出ていても結果に入らない。"""
+        items = [{"type": "ai_overview", "references": [{"url": "https://www.japangreen.vn/"}]},
                  {"type": "featured_snippet", "domain": "lotus-clinic.com", "url": "https://lotus-clinic.com/"},
                  {"type": "people_also_ask", "items": [{"type": "people_also_ask_element", "expanded_element": [
-                     {"type": "people_also_ask_expanded_element", "url": "https://www.japangreen.vn/q/"}]}]}]
+                     {"type": "people_also_ask_expanded_element", "url": "https://www.japangreen.vn/q/"}]}]},
+                 {"type": "organic", "rank_group": 1, "url": "https://sakurahanoi.com/"}]
         p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
-        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("TRUE", "FALSE"))
+        self.assertNotIn("ai_overview", p)
+        self.assertNotIn("ai_overview_own", p)
         self.assertEqual((p["featured_snippet_own"], p["paa_own"]), ("FALSE", "TRUE"))
+        self.assertEqual(p["rank_sakura"], 1)
 
-    def test_no_ai_overview_google_vs_bing(self):
+    def test_no_boxes_are_blank(self):
         items = [{"type": "organic", "rank_group": 1, "url": "https://www.japangreen.vn/"}]
-        g = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
-        b = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "bing")
-        self.assertEqual((g["ai_overview"], g["ai_overview_own"]), ("FALSE", ""))
-        self.assertEqual((b["ai_overview"], b["ai_overview_own"]), ("", ""))  # Bing は対象外
+        for eng in ("google", "bing"):
+            p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, eng)
+            self.assertEqual((p["featured_snippet_own"], p["paa_own"]), ("", ""))
 
     def test_yahoo_competitors(self):
         items = json.loads((FX / "apify_yahoo_jp.json").read_text(encoding="utf-8"))
@@ -280,12 +274,8 @@ class MigrateCsvTest(unittest.TestCase):
             self.assertEqual(rows[1][0], "2026-11-11")
             self.assertFalse(run.migrate_csv(path))  # 2 回目は何もしない
 
-    def test_ai_overview_is_off(self):
-        """2026-11-12: AI 概要は取得しない（鍵本さんの決定）。設定が false で、Google でも空欄になる。"""
-        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
-        self.assertFalse(cfg["ai_overview"])
-        items = [{"type": "ai_overview", "references": [{"url": "https://www.japangreen.vn/"}]},
-                 {"type": "organic", "rank_group": 1, "url": "https://www.japangreen.vn/"}]
-        p = run.parse_dfs(_task(items), cfg, "google")
-        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("", ""))
-        self.assertEqual(p["rank"], 1)
+    def test_ai_overview_columns_removed(self):
+        """2026-11-12: AI 概要の列は CSV・シートから削除（鍵本さんの決定）。"""
+        self.assertNotIn("ai_overview", run.HEADER)
+        self.assertNotIn("ai_overview_own", run.HEADER)
+        self.assertEqual(run.HEADER[17:19], ["featured_snippet_own", "paa_own"])
