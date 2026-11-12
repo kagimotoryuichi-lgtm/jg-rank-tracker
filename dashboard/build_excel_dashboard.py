@@ -93,7 +93,7 @@ def band_of(n):
 
 
 def active_profiles(day):
-    """その日に計測していたブラウザ（config の since より前の日は数えない。2026-11-12: Android を 11/13 から追加）"""
+    """その日に計測していたブラウザ（config の since より前の日は数えない）"""
     return [p for p, v in CFG["profiles"].items() if v.get("since", "") <= day]
 
 
@@ -422,19 +422,22 @@ def build_extra(wb, rows, days, day, best):
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
     style_header(ws, r, 1, 4)
     r += 1
-    for label, shown, own in (
+    boxes = (
         ("AI による概要（Google のみ）", lambda x: x.get("ai_overview") == "TRUE", lambda x: x.get("ai_overview_own") == "TRUE"),
         ("強調スニペット（一番上の答えの枠）", lambda x: x.get("featured_snippet_own") in ("TRUE", "FALSE"),
          lambda x: x.get("featured_snippet_own") == "TRUE"),
         ("他の人はこちらも質問", lambda x: x.get("paa_own") in ("TRUE", "FALSE"), lambda x: x.get("paa_own") == "TRUE"),
-    ):
+    )
+    if not CFG.get("ai_overview", False):  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
+        boxes = boxes[1:]
+    for label, shown, own in boxes:
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
         _cell(ws, r, 1, label, align=LEFT)
         ws.cell(r, 2).border = BOX
         _cell(ws, r, 3, sum(1 for x in oks if shown(x)))
         _cell(ws, r, 4, sum(1 for x in oks if own(x)), bold=True, color=GREEN)
         r += 1
-    cited = [rec for rec in oks if rec.get("ai_overview_own") == "TRUE"]
+    cited = [rec for rec in oks if rec.get("ai_overview_own") == "TRUE"] if CFG.get("ai_overview", False) else []
     if cited:
         r += 1
         ws.cell(r, 1, "AI による概要に当院が引用された組").font = F(bold=True, size=10, color=NAVY)
@@ -725,7 +728,7 @@ def main(src, out, day=None):
         (f"・計測日 {day}。毎朝ベトナム時間 7 時台に自動で計測し、Google スプレッドシート「japangreen_検索順位」の ranks シートに追記している（このファイルはその抜粋）。", False),
         ("・順位は「通常の検索結果」だけを数えた当院（japangreen.vn）の順位。広告・地図の枠・AI の概要は数えない。30 位までに無ければ「圏外」。", False),
         (f"・「組」は検索語 × ブラウザ × 地点の組み合わせ（1 日 {len(combos_all())} 組）。前日比は、その前にデータがある日と比べている（ブラウザを足した日は、両方の日に計測したブラウザだけで比べる）。", False),
-        ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ（iPhone）、Chrome（Android）＝Google スマホ（Android・2026-11-13 から）、Yahoo! JAPAN（PC）。Firefox・Mac の Safari は Chrome（PC）と、iPhone の Chrome は Safari（iPhone）と同じ結果。", False),
+        ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ（iPhone）、Yahoo! JAPAN（PC）。Android と AI による概要は計測しない（2026-11-12 鍵本さんの決定）。Firefox・Mac の Safari は Chrome（PC）と、iPhone の Chrome は Safari（iPhone）と同じ結果。", False),
         ("・地点は日本＝国単位、ベトナム＝ハノイ市（2026-11-06 から。それ以前のベトナムは国単位なので比べない）。"
          "ログインや閲覧履歴の影響は含まない（各自の画面とは多少ずれる）。", False),
         ("・地図の枠: 数字＝枠の中の当院の位置、「当院なし」＝枠は出たが当院がいない、「—」＝枠が出ない。Yahoo! JAPAN は対象外。", False),

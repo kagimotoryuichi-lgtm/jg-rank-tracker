@@ -4,8 +4,8 @@
   "_note_locations": "2026-11-06 から VN-ja・VN-en の地点を国（2704）→ハノイ市（1028580 \"Hanoi,Ha Noi,Vietnam\"、Google・Bing とも対応）に変更。日本は国（2392）のまま",
   "depth": 30,
   "_note_iphone": "DataForSEO はブラウザを選べない（端末と OS だけ）。iPhone の Safari と Chrome は同じ Google のスマホ（iOS）の結果になるので、iphone の 1 本で両方を表す（2026-11-12）",
-  "ai_overview_async": true,
-  "_note_ai_overview_async": "Google の task_post に load_async_ai_overview を付け、後から読み込まれる AI 概要も取る。1 件 $0.0006 の追加（AI 概要が無ければ返金）。2026-11-12 鍵本さん承認",
+  "ai_overview": false,
+  "_note_ai_overview": "AI 概要（AI による概要）は取得しない（2026-11-12 鍵本さんの決定）。false のとき load_async_ai_overview を付けず、ai_overview・ai_overview_own は空欄。2026-11-12 の 1 日だけ取得した値は CSV・シートに残る",
   "competitors": [
     {"id": "sakura", "label": "さくら",   "domains": ["sakurahanoi.com"]},
     {"id": "dym",    "label": "DYM",      "domains": ["jp-dymmedicalcenter.com.vn", "dym.asia"]},
@@ -16,14 +16,14 @@
     "chrome-pc": {"label": "Chrome（PC）",      "engine": "google",   "device": "desktop", "os": "windows"},
     "edge-pc":   {"label": "Edge（PC）",        "engine": "bing",     "device": "desktop", "os": "windows"},
     "iphone":    {"label": "Safari（iPhone）",  "engine": "google",   "device": "mobile",  "os": "ios"},
-    "android":   {"label": "Chrome（Android）", "engine": "google",   "device": "mobile",  "os": "android", "since": "2026-11-13"},
     "yahoo-pc":  {"label": "Yahoo! JAPAN（PC）", "engine": "yahoo_jp", "device": "desktop", "os": "windows"}
   },
+  "_note_android": "Android（Chrome）は計測しない（2026-11-12 鍵本さんの決定。11/13 から始める予定だったが、開始前に取りやめ）",
   "locales": [
-    {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone", "android", "yahoo-pc"]},
-    {"id": "VN-ja", "label": "ハノイ×日本語",   "location_code": 1028580, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone", "android"]},
-    {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone", "android"]},
-    {"id": "VN-en", "label": "ハノイ×英語",     "location_code": 1028580, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone", "android"]}
+    {"id": "JP-ja", "label": "日本×日本語",     "location_code": 2392, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone", "yahoo-pc"]},
+    {"id": "VN-ja", "label": "ハノイ×日本語",   "location_code": 1028580, "language_code": "ja", "keyword_set": "ja", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
+    {"id": "JP-en", "label": "日本×英語",       "location_code": 2392, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]},
+    {"id": "VN-en", "label": "ハノイ×英語",     "location_code": 1028580, "language_code": "en", "keyword_set": "en", "profiles": ["chrome-pc", "edge-pc", "iphone"]}
   ],
   "keywords": {
     "ja": [

@@ -53,15 +53,14 @@ class JobsTest(unittest.TestCase):
         by = {}
         for j in jobs:
             by[j["engine"]] = by.get(j["engine"], 0) + 1
-        self.assertEqual(by, {"google": 156, "bing": 52, "yahoo_jp": 17})  # google = PC 52 + iPhone 52 + Android 52（2026-11-12）
+        self.assertEqual(by, {"google": 104, "bing": 52, "yahoo_jp": 17})  # google = PC 52 + iPhone 52（2026-11-12 Android は取りやめ）
         self.assertEqual(len({run.tag_of(j) for j in jobs}), len(jobs))  # tag が一意
-        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 4 * 2 * 2 * 2)
+        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 4 * 2 * 3)  # 4 地点 × 2 語 × 3 プロファイル
         prof = {}
         for j in jobs:
             prof[j["profile"]] = prof.get(j["profile"], 0) + 1
-        self.assertEqual(prof, {"chrome-pc": 52, "edge-pc": 52, "iphone": 52, "android": 52, "yahoo-pc": 17})
-        android = [j for j in jobs if j["profile"] == "android"][0]
-        self.assertEqual((android["engine"], android["device"], android["os"]), ("google", "mobile", "android"))
+        self.assertEqual(prof, {"chrome-pc": 52, "edge-pc": 52, "iphone": 52, "yahoo-pc": 17})
+        self.assertFalse(any(j["os"] == "android" for j in jobs))  # 2026-11-12: Android は計測しない
         iphone = [j for j in jobs if j["profile"] == "iphone"][0]
         self.assertEqual((iphone["engine"], iphone["device"], iphone["os"]), ("google", "mobile", "ios"))
 
@@ -79,9 +78,9 @@ class SheetTestModeTest(unittest.TestCase):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         ap.assert_called_once()
         self.assertEqual(ap.call_args.kwargs["worksheet"], "ranks_test")
-        self.assertEqual(len(rows), 4 * 4 + 1)  # chrome-pc・edge-pc・iphone・android × 4 地点 + Yahoo! JAPAN 1
+        self.assertEqual(len(rows), 3 * 4 + 1)  # chrome-pc・edge-pc・iphone × 4 地点 + Yahoo! JAPAN 1
         self.assertEqual(set(rows[0]), set(run.HEADER))  # 新しい列も全部ある
-        self.assertEqual({r["browser_profile"] for r in rows}, {"chrome-pc", "edge-pc", "iphone", "android", "yahoo-pc"})
+        self.assertEqual({r["browser_profile"] for r in rows}, {"chrome-pc", "edge-pc", "iphone", "yahoo-pc"})
         self.assertEqual(errors, [])
         self.assertTrue(all(r["status"] == "dry-run" for r in rows))
 
@@ -160,7 +159,7 @@ class RetryNoResultsTest(unittest.TestCase):
                 mock.patch.dict(os.environ, {"SHEET_WEBAPP_URL": ""}), mock.patch.object(run, "ROOT", Path(tmp)):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         self.assertEqual(errors, [])
-        self.assertEqual(len(rows), 4 * 4)
+        self.assertEqual(len(rows), 3 * 4)  # 3 プロファイル × 4 地点（2026-11-12 Android は取りやめ）
         self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 + 1)  # 1 件だけ送り直し
 
 
@@ -281,6 +280,12 @@ class MigrateCsvTest(unittest.TestCase):
             self.assertEqual(rows[1][0], "2026-11-11")
             self.assertFalse(run.migrate_csv(path))  # 2 回目は何もしない
 
-    def test_task_has_async_ai_overview_only_for_google(self):
+    def test_ai_overview_is_off(self):
+        """2026-11-12: AI 概要は取得しない（鍵本さんの決定）。設定が false で、Google でも空欄になる。"""
         cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
-        self.assertTrue(cfg["ai_overview_async"])
+        self.assertFalse(cfg["ai_overview"])
+        items = [{"type": "ai_overview", "references": [{"url": "https://www.japangreen.vn/"}]},
+                 {"type": "organic", "rank_group": 1, "url": "https://www.japangreen.vn/"}]
+        p = run.parse_dfs(_task(items), cfg, "google")
+        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("", ""))
+        self.assertEqual(p["rank"], 1)

@@ -30,6 +30,7 @@ class FakeDFS:
         if engine == "bing":
             raise RuntimeError("HTTP 402 Payment Required.")
         for t in tasks:
+            assert "load_async_ai_overview" not in t  # 2026-11-12: AI 概要は取得しない
             self.n += 1
             posted.append((t["tag"], f"{engine}-{self.n}", 0.0025))
         return posted
@@ -63,13 +64,13 @@ class EngineIsolationTest(unittest.TestCase):
             rows, errors = run.run(CFG, args(self.out), log=lambda *_: None)
         google = [r for r in rows if r["engine"] == "google"]
         bing = [r for r in rows if r["engine"] == "bing"]
-        self.assertEqual(len(google), 156)  # PC・iPhone・Android（2026-11-12）
+        self.assertEqual(len(google), 104)  # PC・iPhone（2026-11-12 Android は取りやめ）
         self.assertTrue(all(r["status"] == "ok" for r in google))
         self.assertEqual(len(bing), 52)
         self.assertTrue(all("402" in r["status"] for r in bing))
         self.assertEqual(len(errors), 52)
         with self.out.open(encoding="utf-8") as f:
-            self.assertEqual(sum(1 for _ in f), 1 + 156 + 52)  # 見出し + Google 156 + Bing のエラー 52
+            self.assertEqual(sum(1 for _ in f), 1 + 104 + 52)  # 見出し + Google 104 + Bing のエラー 52
 
     def test_recover_picks_todays_latest_per_tag(self):
         ict = dt.timezone(dt.timedelta(hours=7))
@@ -93,7 +94,7 @@ class EngineIsolationTest(unittest.TestCase):
         F.ready = ready
         with mock.patch.object(clients, "DataForSEO", F):
             rows, errors = run.recover(CFG, args(self.out), log=lambda *_: None)
-        self.assertEqual(len(rows), 156)
+        self.assertEqual(len(rows), 104)  # Google の PC・iPhone（2026-11-12 Android は取りやめ）
         self.assertEqual(errors, [])
         self.assertTrue(all(t.startswith("new-") for t in seen))
 

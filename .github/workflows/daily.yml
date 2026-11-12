@@ -34,7 +34,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90      # 2026-11-12: Android と AI 概要の読み込みを足して 1 回が長くなった（試運転 80 件で 29 分）
+    timeout-minutes: 90      # 2026-11-12: Android と AI 概要を足して長くなったため 90 分に。同日に両方とも取りやめたが、余裕として残す
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
