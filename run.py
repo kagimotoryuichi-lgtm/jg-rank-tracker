@@ -6,6 +6,7 @@
   python run.py --limit 2       # キーワードを各言語 2 語に絞る（費用を抑えた試運転）
   python run.py --no-yahoo      # Yahoo! JAPAN（Apify）を外す
   python run.py --recover       # 登録済みで未回収の今日の Google・Bing の結果を回収（新たな課金なし）
+  python run.py --to-test --limit 5  # 本番と同じ API で少数を測り、ranks_test シートと data/ranks_test.csv に書く（試運転）
   python run.py --sheet-test    # API を呼ばず見本の行をスプレッドシートの ranks_test シートに書く
                                 #（SHEET_WEBAPP_URL と SHEET_TOKEN だけで、書き込みの準備を確かめる）
 
@@ -23,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from tracker.parse import parse_dataforseo, parse_yahoo_jp  # noqa: E402
-from tracker.sheets import HEADER  # noqa: E402
+from tracker.sheets import HEADER, FEATURE_HEADER  # noqa: E402
 
 ICT = dt.timezone(dt.timedelta(hours=7))  # 記録の日付はベトナム時間（2026-11-05 から）
 SECRET_ENVS = ("DFS_LOGIN", "DFS_PASSWORD", "APIFY_TOKEN", "SHEET_TOKEN", "SHEET_WEBAPP_URL")
@@ -78,28 +79,56 @@ def row_of(date, job, parsed, status):
         "has_local_pack": "TRUE" if parsed.get("has_local_pack") else "FALSE",
         "top10": " ".join(parsed.get("top10") or []), "results_count": parsed.get("results_count", ""),
         "status": status, "check_url": parsed.get("check_url", ""),
+        **{k: parsed.get(k, "") for k in HEADER if k in FEATURE_HEADER or k.startswith("rank_")},
     }
 
 
 def save(rows, args, log=print):
     """CSV（data/ranks.csv）とスプレッドシートに追記する。"""
-    out = getattr(args, "out", None) or ROOT / ("data/ranks_dryrun.csv" if args.dry_run else "data/ranks.csv")
+    to_test = getattr(args, "to_test", False)
+    out = getattr(args, "out", None) or ROOT / ("data/ranks_dryrun.csv" if args.dry_run else
+                                                "data/ranks_test.csv" if to_test else "data/ranks.csv")
     new = not out.exists()
     out.parent.mkdir(exist_ok=True)
+    if not new:
+        migrate_csv(out)
     with out.open("a", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=HEADER)
         if new:
             w.writeheader()
         w.writerows(rows)
     log(f"  CSV に {len(rows)} 行を追記: {out}")
-    if getattr(args, "sheet_test", False):
+    if getattr(args, "sheet_test", False) or (to_test and not args.dry_run):
         from tracker.sheets import append_rows
         append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows, worksheet="ranks_test")
-        log(f"  スプレッドシートの ranks_test シートに見本の {len(rows)} 行を追記（書き込みテスト）")
+        log(f"  スプレッドシートの ranks_test シートに {len(rows)} 行を追記（試運転）")
     elif not args.dry_run and env("SHEET_WEBAPP_URL") and env("SHEET_TOKEN"):
         from tracker.sheets import append_rows
         append_rows(env("SHEET_WEBAPP_URL"), env("SHEET_TOKEN"), rows)
         log("  スプレッドシートに追記")
+
+
+def migrate_csv(path):
+    """CSV の見出しが今の列より短い（列を足す前の）ときは、見出しを今の列にして書き直す。古い行の新しい列は空欄。"""
+    with open(path, encoding="utf-8", newline="") as f:
+        r = csv.reader(f)
+        head = next(r, [])
+        if head == HEADER:
+            return False
+        if head != HEADER[:len(head)]:
+            raise RuntimeError(f"{path} の列の並びが想定と違う（先頭の一致しない列あり）。書き足さずに止める")
+        body = list(r)
+    tmp = Path(str(path) + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(HEADER)
+        w.writerows(row + [""] * (len(HEADER) - len(row)) for row in body)
+    tmp.replace(path)
+    return True
+
+
+def parse_dfs(t, cfg, engine):
+    return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine)
 
 
 def run(cfg, args, log=print):
@@ -116,13 +145,16 @@ def run(cfg, args, log=print):
     if args.dry_run:
         fx = json.loads((ROOT / "tests/fixtures/dataforseo_task.json").read_text(encoding="utf-8"))
         for j in dfs_jobs:
-            rows.append(row_of(date, j, parse_dataforseo(fx, cfg["site_domain"], cfg["brand_names"]), "dry-run"))
+            rows.append(row_of(date, j, parse_dfs(fx, cfg, j["engine"]), "dry-run"))
     elif dfs_jobs:
         from tracker.clients import DataForSEO
         by_tag = {tag_of(j): j for j in dfs_jobs}
         task_of = {tag_of(j): {"keyword": j["kw"], "location_code": j["locale"]["location_code"],
                                "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-                               "depth": cfg["depth"], "tag": tag_of(j)} for j in dfs_jobs}
+                               "depth": cfg["depth"], "tag": tag_of(j),
+                               # 2026-11-12: Google は後から読み込まれる AI 概要も取る（1 件 $0.0006 追加・無ければ返金）
+                               **({"load_async_ai_overview": True} if j["engine"] == "google" and cfg.get("ai_overview_async") else {})}
+                   for j in dfs_jobs}
         ids = {}
         d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
         # 2026-11-10: Bing の登録が 402 で断られたとき、登録済み（課金済み）の Google まで捨てていた。
@@ -182,7 +214,7 @@ def run(cfg, args, log=print):
                     rows.append(row_of(date, by_tag[tag], {}, f"error 結果未取得 task_id={tid}"))
                     continue
                 st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
-                parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
+                parsed = parse_dfs(t, cfg, eng) if st == "ok" else {}
                 rows.append(row_of(date, by_tag[tag], parsed, st))
 
     # --- Yahoo! JAPAN（Apify） ---
@@ -196,7 +228,7 @@ def run(cfg, args, log=print):
                 items = apify_yahoo_jp(env("APIFY_TOKEN"), cfg["yahoo_jp"]["actor"], kws, cfg["yahoo_jp"]["max_items"])
             st = "dry-run" if args.dry_run else "ok"
             for j in yj_jobs:
-                p = parse_yahoo_jp(items, j["kw"], cfg["site_domain"])
+                p = parse_yahoo_jp(items, j["kw"], cfg["site_domain"], cfg.get("competitors"))
                 rows.append(row_of(date, j, p, st if p["top10"] else "no-results"))
         except Exception as e:  # Yahoo! JAPAN が失敗しても Google/Bing は保存する
             log(f"  Yahoo! JAPAN 失敗: {redact(e)}")
@@ -242,7 +274,7 @@ def recover(cfg, args, log=print):
     for tag, (_, tid, eng) in pick.items():
         t = got.get(tid, {})
         st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
-        parsed = parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"]) if st == "ok" else {}
+        parsed = parse_dfs(t, cfg, eng) if st == "ok" else {}
         rows.append(row_of(date, by_tag[tag], parsed, st))
     save(rows, args, log)
     errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
@@ -300,6 +332,8 @@ def main():
     ap.add_argument("--sheet-test", action="store_true")
     ap.add_argument("--diagnose-bing", action="store_true")
     ap.add_argument("--only-yahoo", action="store_true")
+    ap.add_argument("--to-test", action="store_true",
+                    help="本番と同じ API で測り、ranks_test シートと data/ranks_test.csv に書く（本番の記録に混ぜない試運転）")
     ap.add_argument("--recover", action="store_true",
                     help="登録済みで未回収の今日の Google・Bing の結果を回収して記録する（新たな課金なし）")
     ap.add_argument("--skip-if-done", type=int, metavar="N",

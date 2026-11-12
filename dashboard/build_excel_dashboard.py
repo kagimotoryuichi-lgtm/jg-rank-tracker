@@ -32,7 +32,7 @@ BANDS = [("1〜3 位", "2E9E5B", "FFFFFF"), ("4〜10 位", "9ED8B2", "1C4A2E"), 
 OUT_BG, OUT_FG = "EEF0F3", "9AA0A8"
 FAIL_BG, FAIL_FG = "F9D9C9", "A0441C"
 MISS_BG, MISS_FG = "FCE8D6", "B35A12"
-LINE_COLORS = ["2F4078", "0F9D8A", "7B61C9", "E0533D"]  # profiles の順（Chrome PC・Edge PC・iPhone・Yahoo）
+LINE_COLORS = {"chrome-pc": "2F4078", "edge-pc": "0F9D8A", "iphone": "7B61C9", "android": "C98A1E", "yahoo-pc": "E0533D"}
 
 thin = Side(style="thin", color="D5D9E0")
 BOX = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -92,14 +92,19 @@ def band_of(n):
     return 0 if n <= 3 else 1 if n <= 10 else 2
 
 
-def combos_all():
+def active_profiles(day):
+    """その日に計測していたブラウザ（config の since より前の日は数えない。2026-11-12: Android を 11/13 から追加）"""
+    return [p for p, v in CFG["profiles"].items() if v.get("since", "") <= day]
+
+
+def combos_all(profiles=None):
     return [(p, l["id"], k["kw"]) for l in CFG["locales"] for p in l["profiles"]
-            for k in CFG["keywords"][l["keyword_set"]]]
+            for k in CFG["keywords"][l["keyword_set"]] if profiles is None or p in profiles]
 
 
-def metrics(best):
+def metrics(best, profiles=None):
     m = Counter()
-    for key in combos_all():
+    for key in combos_all(profiles):
         m["total"] += 1
         r = best.get(key)
         n = rank_of(r)
@@ -278,12 +283,15 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     x.font, x.alignment = F(bold=True, size=16, color="FFFFFF"), Alignment(vertical="center")
     ws.merge_cells("A2:L2")
     x = ws.cell(2, 1, "当院（japangreen.vn）が通常の検索結果で何位に出たか（30 位まで）。"
-                      "「組」＝検索語 × ブラウザ × 地点。ブラウザ＝Chrome（PC）・Edge（PC）・Safari（iPhone）・Yahoo! JAPAN（PC）")
+                      "「組」＝検索語 × ブラウザ × 地点。ブラウザ＝" + "・".join(PROFILE_LABEL[p] for p in CFG["profiles"]))
     x.font, x.alignment = F(size=9, color="555B66"), Alignment(vertical="center")
     ws.row_dimensions[2].height = 20
 
     # --- 日付と数字のカード（4〜7 行目） ---
-    cur, pm = metrics(best), (metrics(prev) if prev else None)
+    cur = metrics(best)
+    # 前日比は、両方の日に計測していたブラウザだけで比べる（ブラウザを足した日に数が跳ねないように）
+    both = active_profiles(prev_day) if prev_day else None
+    cur_both, pm = metrics(best, both), (metrics(prev, both) if prev else None)
     for c in (1, 2):
         ws.cell(4, c).fill = fill(NAVY)
         for r in range(5, 8):
@@ -301,7 +309,7 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     ws.row_dimensions[6].height = 42
 
     def d(k):
-        return None if pm is None else cur[k] - pm[k]
+        return None if pm is None else cur_both[k] - pm[k]
     tot = cur["total"]
     card(ws, 4, 3, "30 位以内に入った組", cur["top30"], f"/ {tot} 組", d("top30"))
     card(ws, 4, 5, "10 位以内（1 ページ目）", cur["top10"], "組", d("top10"))
@@ -395,7 +403,7 @@ def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     lc.add_data(Reference(g, min_col=2, max_col=1 + len(CFG["profiles"]), min_row=trend_head, max_row=trend_last),
                 titles_from_data=True)
     lc.set_categories(Reference(g, min_col=1, min_row=trend_head + 1, max_row=trend_last))
-    for s_, colr in zip(lc.series, LINE_COLORS):
+    for s_, colr in zip(lc.series, [LINE_COLORS.get(p, "8A8F98") for p in CFG["profiles"]]):
         s_.graphicalProperties.line.solidFill = colr
         s_.graphicalProperties.line.width = 28000
         s_.marker.symbol = "circle"
@@ -460,12 +468,18 @@ def main(src, out, day=None):
     best = pick_latest(rows, day)
     # 比べる日: 取得できた割合が半分未満の日（計測できなかった日）は飛ばす（2026-11-10: 11/8・11/9 は Google・Bing が全件失敗）
     before = [x for x in days if x < day]
-    usable = [x for x in before if (lambda m: m["total"] and m["got"] * 2 >= m["total"])(metrics(pick_latest(rows, x)))]
+    usable = [x for x in before if (lambda m: m["total"] and m["got"] * 2 >= m["total"])(
+        metrics(pick_latest(rows, x), active_profiles(x)))]
     prev_day = usable[-1] if usable else None
     global CMP
     if prev_day and (dt.date.fromisoformat(day) - dt.date.fromisoformat(prev_day)).days > 1:
         CMP = "前回"
     prev = pick_latest(rows, prev_day) if prev_day else {}
+    # その日に計測していないブラウザ（since より前）は、表・グラフ・割合から外す
+    act = active_profiles(day)
+    CFG["profiles"] = {p: v for p, v in CFG["profiles"].items() if p in act}
+    for l in CFG["locales"]:
+        l["profiles"] = [p for p in l["profiles"] if p in act]
     kw_ja, kw_en = CFG["keywords"]["ja"], CFG["keywords"]["en"]
 
     wb = Workbook()

@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 service-account*.json
+data/ranks_test.csv

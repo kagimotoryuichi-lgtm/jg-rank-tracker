@@ -7,8 +7,23 @@ import re
 import urllib.parse
 import urllib.request
 
-HEADER = ["date", "engine", "browser_profile", "device", "os", "locale", "locale_label", "keyword", "group", "rank", "url",
-          "local_rank", "has_local_pack", "top10", "results_count", "status", "check_url"]
+BASE_HEADER = ["date", "engine", "browser_profile", "device", "os", "locale", "locale_label", "keyword", "group", "rank",
+               "url", "local_rank", "has_local_pack", "top10", "results_count", "status", "check_url"]
+# 2026-11-12 追加（列は末尾に足すだけ。既存の列の順は変えない＝スプレッドシート・Looker Studio が位置で読むため）
+FEATURE_HEADER = ["ai_overview", "ai_overview_own", "featured_snippet_own", "paa_own"]
+
+
+def header_of(cfg):
+    """列の並び: 既存 17 列 → 枠 4 列 → 競合の順位（config の competitors の順に rank_<id>）。"""
+    return BASE_HEADER + FEATURE_HEADER + ["rank_" + c["id"] for c in cfg.get("competitors", [])]
+
+
+def _load_cfg():
+    from pathlib import Path
+    return json.loads((Path(__file__).resolve().parents[1] / "config.json").read_text(encoding="utf-8"))
+
+
+HEADER = header_of(_load_cfg())
 
 
 class SheetWriteError(RuntimeError):

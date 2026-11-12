@@ -53,13 +53,15 @@ class JobsTest(unittest.TestCase):
         by = {}
         for j in jobs:
             by[j["engine"]] = by.get(j["engine"], 0) + 1
-        self.assertEqual(by, {"google": 104, "bing": 52, "yahoo_jp": 17})  # google = PC 52 + iPhone 52
+        self.assertEqual(by, {"google": 156, "bing": 52, "yahoo_jp": 17})  # google = PC 52 + iPhone 52 + Android 52（2026-11-12）
         self.assertEqual(len({run.tag_of(j) for j in jobs}), len(jobs))  # tag が一意
-        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 3 * 2 * 2 * 2)
+        self.assertEqual(len(run.build_jobs(cfg, limit=2, yahoo=False)), 4 * 2 * 2 * 2)
         prof = {}
         for j in jobs:
             prof[j["profile"]] = prof.get(j["profile"], 0) + 1
-        self.assertEqual(prof, {"chrome-pc": 52, "edge-pc": 52, "iphone": 52, "yahoo-pc": 17})
+        self.assertEqual(prof, {"chrome-pc": 52, "edge-pc": 52, "iphone": 52, "android": 52, "yahoo-pc": 17})
+        android = [j for j in jobs if j["profile"] == "android"][0]
+        self.assertEqual((android["engine"], android["device"], android["os"]), ("google", "mobile", "android"))
         iphone = [j for j in jobs if j["profile"] == "iphone"][0]
         self.assertEqual((iphone["engine"], iphone["device"], iphone["os"]), ("google", "mobile", "ios"))
 
@@ -77,8 +79,9 @@ class SheetTestModeTest(unittest.TestCase):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         ap.assert_called_once()
         self.assertEqual(ap.call_args.kwargs["worksheet"], "ranks_test")
-        self.assertEqual(len(rows), 4 * 3 + 1)  # chrome-pc・edge-pc・iphone × 4 地点 + Yahoo! JAPAN 1
-        self.assertEqual({r["browser_profile"] for r in rows}, {"chrome-pc", "edge-pc", "iphone", "yahoo-pc"})
+        self.assertEqual(len(rows), 4 * 4 + 1)  # chrome-pc・edge-pc・iphone・android × 4 地点 + Yahoo! JAPAN 1
+        self.assertEqual(set(rows[0]), set(run.HEADER))  # 新しい列も全部ある
+        self.assertEqual({r["browser_profile"] for r in rows}, {"chrome-pc", "edge-pc", "iphone", "android", "yahoo-pc"})
         self.assertEqual(errors, [])
         self.assertTrue(all(r["status"] == "dry-run" for r in rows))
 
@@ -157,7 +160,7 @@ class RetryNoResultsTest(unittest.TestCase):
                 mock.patch.dict(os.environ, {"SHEET_WEBAPP_URL": ""}), mock.patch.object(run, "ROOT", Path(tmp)):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
         self.assertEqual(errors, [])
-        self.assertEqual(len(rows), 4 * 3)
+        self.assertEqual(len(rows), 4 * 4)
         self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 + 1)  # 1 件だけ送り直し
 
 
@@ -208,3 +211,76 @@ class SecretSafetyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+COMP = [{"id": "sakura", "domains": ["sakurahanoi.com"]}, {"id": "dym", "domains": ["jp-dymmedicalcenter.com.vn", "dym.asia"]}]
+
+
+def _task(items):
+    return {"status_code": 20000, "result": [{"items": items, "se_results_count": 1, "check_url": "x"}]}
+
+
+class FeaturesTest(unittest.TestCase):
+    """2026-11-12 追加: 競合の順位・AI 概要・強調スニペット・他の人はこちらも質問"""
+
+    def test_competitors_best_rank(self):
+        items = [{"type": "organic", "rank_group": 1, "url": "https://dym.asia/a"},
+                 {"type": "organic", "rank_group": 2, "url": "https://www.japangreen.vn/"},
+                 {"type": "organic", "rank_group": 4, "url": "https://jp-dymmedicalcenter.com.vn/b"}]
+        p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
+        self.assertEqual(p["rank"], 2)
+        self.assertEqual(p["rank_dym"], 1)  # 2 つのドメインのうち上の方
+        self.assertEqual(p["rank_sakura"], "")  # 圏外は空欄
+
+    def test_ai_overview_cites_own(self):
+        items = [{"type": "ai_overview", "items": [{"type": "ai_overview_element", "references": [
+                    {"type": "ai_overview_reference", "domain": "www.japangreen.vn", "url": "https://www.japangreen.vn/x/"}]}]},
+                 {"type": "organic", "rank_group": 1, "url": "https://sakurahanoi.com/"}]
+        p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
+        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("TRUE", "TRUE"))
+        self.assertEqual(p["rank_sakura"], 1)
+        self.assertEqual((p["featured_snippet_own"], p["paa_own"]), ("", ""))  # 枠が出ていないときは空欄
+
+    def test_ai_overview_without_own_and_other_boxes(self):
+        items = [{"type": "ai_overview", "references": [{"url": "https://dym.asia/"}]},
+                 {"type": "featured_snippet", "domain": "lotus-clinic.com", "url": "https://lotus-clinic.com/"},
+                 {"type": "people_also_ask", "items": [{"type": "people_also_ask_element", "expanded_element": [
+                     {"type": "people_also_ask_expanded_element", "url": "https://www.japangreen.vn/q/"}]}]}]
+        p = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
+        self.assertEqual((p["ai_overview"], p["ai_overview_own"]), ("TRUE", "FALSE"))
+        self.assertEqual((p["featured_snippet_own"], p["paa_own"]), ("FALSE", "TRUE"))
+
+    def test_no_ai_overview_google_vs_bing(self):
+        items = [{"type": "organic", "rank_group": 1, "url": "https://www.japangreen.vn/"}]
+        g = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "google")
+        b = parse_dataforseo(_task(items), "japangreen.vn", BRANDS, COMP, "bing")
+        self.assertEqual((g["ai_overview"], g["ai_overview_own"]), ("FALSE", ""))
+        self.assertEqual((b["ai_overview"], b["ai_overview_own"]), ("", ""))  # Bing は対象外
+
+    def test_yahoo_competitors(self):
+        items = json.loads((FX / "apify_yahoo_jp.json").read_text(encoding="utf-8"))
+        q = parse_yahoo_jp(items, "ハノイ 病院", "japangreen.vn", COMP)
+        self.assertEqual(q["rank_dym"], 1)
+
+
+class MigrateCsvTest(unittest.TestCase):
+    def test_old_header_is_extended(self):
+        import csv
+        import tempfile
+        from tracker.sheets import BASE_HEADER
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "ranks.csv"
+            with path.open("w", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(BASE_HEADER)
+                w.writerow(["2026-11-11"] + ["x"] * (len(BASE_HEADER) - 1))
+            self.assertTrue(run.migrate_csv(path))
+            rows = list(csv.reader(path.open(encoding="utf-8", newline="")))
+            self.assertEqual(rows[0], run.HEADER)
+            self.assertEqual(len(rows[1]), len(run.HEADER))
+            self.assertEqual(rows[1][0], "2026-11-11")
+            self.assertFalse(run.migrate_csv(path))  # 2 回目は何もしない
+
+    def test_task_has_async_ai_overview_only_for_google(self):
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        self.assertTrue(cfg["ai_overview_async"])

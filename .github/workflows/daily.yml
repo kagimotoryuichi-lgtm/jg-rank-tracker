@@ -17,6 +17,7 @@ on:
           - bing-diagnose   # Bing の結果なし（40102）の切り分け（16 タスク・数セント、記録はしない）
           - yahoo-test      # Yahoo! JAPAN（Apify）だけを測る（DataForSEO は使わない）。limit 空欄で 2 語、17 で全語
           - recover         # 登録済み（課金済み）で未回収の今日の Google・Bing の結果を回収して記録（新たな課金なし）
+          - test-run        # 本番と同じ API で少数を測り、ranks_test シートに書く（本番の記録に混ぜない。limit 空欄で各言語 5 語）
         default: sheet-test
       limit:
         description: "キーワードを各言語この数に絞る（空欄なら全部。sheet-test では無視）"
@@ -55,6 +56,8 @@ jobs:
             python run.py --sheet-test
           elif [ "${{ github.event.inputs.mode }}" = "bing-diagnose" ]; then
             python run.py --diagnose-bing
+          elif [ "${{ github.event.inputs.mode }}" = "test-run" ]; then
+            python run.py --to-test --limit "${{ github.event.inputs.limit || '5' }}"
           elif [ "${{ github.event.inputs.mode }}" = "recover" ]; then
             python run.py --recover
           elif [ "${{ github.event.inputs.mode }}" = "yahoo-test" ]; then
