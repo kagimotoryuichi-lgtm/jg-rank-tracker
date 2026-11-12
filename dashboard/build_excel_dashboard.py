@@ -265,6 +265,185 @@ def heat(ws, top, title, keywords, cols, best, prev, field="rank"):
     return r + 1
 
 
+def _path(url):
+    """当院の URL → 表示用のパス（トップは「トップ /」）"""
+    if not url:
+        return ""
+    from urllib.parse import unquote, urlsplit
+    pth = unquote(urlsplit(url).path) or "/"
+    return "トップ /" if pth == "/" else ("VI トップ /vi/" if pth == "/vi/" else pth)
+
+
+def _cell(ws, r, c, v, size=9, bold=False, color="222222", align=None):
+    x = ws.cell(r, c, v)
+    x.border, x.font, x.alignment = BOX, F(size=size, bold=bold, color=color), align or CENTER
+    return x
+
+
+def build_extra(wb, rows, days, day, best):
+    """2026-11-12 追加: 指名語の 7 日平均・出たページ／競合の順位／AI 概要などの枠。"""
+    ws = wb.create_sheet("指名語・競合・枠", 1)
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 27
+    for c in range(3, 14):
+        ws.column_dimensions[get_column_letter(c)].width = 10
+    ws["A1"] = f"指名語の安定度・出たページ・競合・枠（{day}）"
+    ws["A1"].font = F(bold=True, size=14, color=NAVY)
+
+    # --- 1. 指名語の直近 7 日 ---
+    last7 = [x for x in days if x <= day][-7:]
+    picks = {x: pick_latest(rows, x) for x in last7}
+    r = 3
+    ws.cell(r, 1, f"1. 指名語の直近 7 日（{last7[0]}〜{last7[-1]}・取得できた日だけで数える）").font = F(bold=True, size=11, color=NAVY)
+    ws.cell(r + 1, 1, "平均順位＝圏外を 31 位とみなした平均。1 位の日数＝取得できた日のうち 1 位だった日。今日出たページ＝この日、検索エンジンが出した当院のページ").font = F(size=8, color="8A8F98")
+    r += 2
+    for i, h in enumerate(["検索語", "地点・ブラウザ", "平均順位", "1 位の日数", "今日", "今日出たページ"], 1):
+        ws.cell(r, i, h)
+    ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=11)
+    style_header(ws, r, 1, 11)
+    r += 1
+    for l in CFG["locales"]:
+        for k in CFG["keywords"][l["keyword_set"]]:
+            if k["group"] != "brand":
+                continue
+            for pr in l["profiles"]:
+                key = (pr, l["id"], k["kw"])
+                got = [n for n in (rank_of(picks[x].get(key)) for x in last7) if n is not False]
+                avg = round(sum((n or 31) for n in got) / len(got), 1) if got else ""
+                firsts = sum(1 for n in got if n == 1)
+                rec = best.get(key)
+                _cell(ws, r, 1, k["kw"], align=LEFT)
+                _cell(ws, r, 2, short(l["id"], pr), size=8, color="555B66", align=LEFT)
+                x = _cell(ws, r, 3, avg, bold=True)
+                if avg != "":
+                    bg, fg = BANDS[band_of(int(avg))][1:] if avg <= 30 else (OUT_BG, OUT_FG)
+                    x.fill, x.font = fill(bg), F(size=9, bold=True, color=fg)
+                _cell(ws, r, 4, f"{firsts} / {len(got)} 日" if got else "")
+                x = _cell(ws, r, 5, "")
+                paint_rank(x, rec, None)
+                ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=11)
+                _cell(ws, r, 6, _path(rec.get("url")) if rec else "", size=8, color="555B66", align=LEFT)
+                r += 1
+
+    # --- 2. 出たページの内訳（今日・全部の組） ---
+    r += 1
+    ws.cell(r, 1, "2. 今日、当院のどのページが出たか（30 位以内の全部の組・多い順に 15 件）").font = F(bold=True, size=11, color=NAVY)
+    r += 1
+    ranked = [rec for rec in best.values() if rank_of(rec) not in (False, None)]
+    cnt = Counter(_path(rec.get("url")) for rec in ranked)
+    first = Counter(_path(rec.get("url")) for rec in ranked if rank_of(rec) == 1)
+    for i, h in ((1, "ページ"), (3, "組数"), (4, "うち 1 位")):
+        ws.cell(r, i, h)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    style_header(ws, r, 1, 4)
+    r += 1
+    for pth, n in cnt.most_common(15):
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        _cell(ws, r, 1, pth, align=LEFT)
+        ws.cell(r, 2).border = BOX
+        _cell(ws, r, 3, n)
+        _cell(ws, r, 4, first.get(pth, 0))
+        r += 1
+
+    # --- 3. 競合の順位 ---
+    comps = CFG.get("competitors", [])
+    measured = any((rec.get("ai_overview") or "") != "" or any((rec.get("rank_" + c["id"]) or "") != "" for c in comps)
+                   for rec in best.values())
+    r += 1
+    ws.cell(r, 1, "3. 競合との比較（通常の検索結果・今日）").font = F(bold=True, size=11, color=NAVY)
+    r += 1
+    if not measured:
+        ws.cell(r, 1, "この日は競合・枠をまだ計測していない（2026-11-13 の朝から計測）").font = F(size=9, color="8A8F98")
+        return
+    names = [("当院", "rank")] + [(c["label"], "rank_" + c["id"]) for c in comps]
+    for i, h in enumerate(["", "30 位以内の組", "10 位以内", "1 位"], 1):
+        ws.cell(r, i, h)
+    style_header(ws, r, 1, 4)
+    r += 1
+    oks = [rec for rec in best.values() if rec.get("status") == "ok"]
+    for nm, col in names:
+        ns = [int(float(v)) for v in ((rec.get(col) or "").strip() for rec in oks) if v]
+        own = nm == "当院"
+        _cell(ws, r, 1, nm, bold=own, color=GREEN if own else "222222", align=LEFT)
+        _cell(ws, r, 2, len(ns), bold=own)
+        _cell(ws, r, 3, sum(n <= 10 for n in ns), bold=own)
+        _cell(ws, r, 4, sum(n == 1 for n in ns), bold=own)
+        r += 1
+    r += 1
+    for kset in ("ja", "en"):
+        locs = [l for l in CFG["locales"] if l["keyword_set"] == kset and "chrome-pc" in l["profiles"]]
+        ws.cell(r, 1, f"一般語の順位（Chrome（PC）・{'日本語' if kset == 'ja' else '英語'}の検索語。「—」＝30 位以内に無し）").font = F(bold=True, size=10, color=NAVY)
+        r += 1
+        ws.cell(r, 1, "検索語")
+        c = 2
+        for l in locs:
+            ws.cell(r, c, LOCALE_LABEL[l["id"]])
+            ws.merge_cells(start_row=r, start_column=c, end_row=r, end_column=c + len(names) - 1)
+            c += len(names)
+        style_header(ws, r, 1, c - 1)
+        r += 1
+        c = 2
+        for l in locs:
+            for nm, _ in names:
+                ws.cell(r, c, nm)
+                c += 1
+        style_header(ws, r, 1, c - 1)
+        ws.row_dimensions[r].height = 26
+        r += 1
+        for k in CFG["keywords"][kset]:
+            if k["group"] == "brand":
+                continue
+            _cell(ws, r, 1, k["kw"], align=LEFT)
+            c = 2
+            for l in locs:
+                rec = best.get(("chrome-pc", l["id"], k["kw"]))
+                for nm, col in names:
+                    x = _cell(ws, r, c, "")
+                    if not rec or rec.get("status") != "ok":
+                        x.value, x.fill, x.font = FAIL, fill(FAIL_BG), F(size=8, color=FAIL_FG)
+                    else:
+                        v = (rec.get(col) or "").strip()
+                        if v:
+                            n = int(float(v))
+                            bg, fg = BANDS[band_of(n)][1:]
+                            x.value, x.fill, x.font = n, fill(bg), F(size=9, bold=True, color=fg)
+                        else:
+                            x.value, x.font = "—", F(size=8, color="C0C4CB")
+                    c += 1
+            r += 1
+        r += 1
+
+    # --- 4. AI 概要・強調スニペット・他の人はこちらも質問 ---
+    ws.cell(r, 1, "4. 検索結果の枠に当院が出たか（今日・全部の組）").font = F(bold=True, size=11, color=NAVY)
+    r += 1
+    for i, h in ((1, "枠"), (3, "枠が出た組"), (4, "うち当院あり")):
+        ws.cell(r, i, h)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    style_header(ws, r, 1, 4)
+    r += 1
+    for label, shown, own in (
+        ("AI による概要（Google のみ）", lambda x: x.get("ai_overview") == "TRUE", lambda x: x.get("ai_overview_own") == "TRUE"),
+        ("強調スニペット（一番上の答えの枠）", lambda x: x.get("featured_snippet_own") in ("TRUE", "FALSE"),
+         lambda x: x.get("featured_snippet_own") == "TRUE"),
+        ("他の人はこちらも質問", lambda x: x.get("paa_own") in ("TRUE", "FALSE"), lambda x: x.get("paa_own") == "TRUE"),
+    ):
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        _cell(ws, r, 1, label, align=LEFT)
+        ws.cell(r, 2).border = BOX
+        _cell(ws, r, 3, sum(1 for x in oks if shown(x)))
+        _cell(ws, r, 4, sum(1 for x in oks if own(x)), bold=True, color=GREEN)
+        r += 1
+    cited = [rec for rec in oks if rec.get("ai_overview_own") == "TRUE"]
+    if cited:
+        r += 1
+        ws.cell(r, 1, "AI による概要に当院が引用された組").font = F(bold=True, size=10, color=NAVY)
+        r += 1
+        for rec in cited:
+            _cell(ws, r, 1, rec["keyword"], align=LEFT)
+            _cell(ws, r, 2, short(rec["locale"], rec["browser_profile"]), size=8, color="555B66", align=LEFT)
+            r += 1
+
 def build_dashboard(wb, rows, days, day, best, prev_day, prev):
     kw_ja, kw_en = CFG["keywords"]["ja"], CFG["keywords"]["en"]
     ws = wb.active
@@ -484,9 +663,10 @@ def main(src, out, day=None):
 
     wb = Workbook()
     build_dashboard(wb, rows, days, day, best, prev_day, prev)
+    build_extra(wb, rows, days, day, best)
 
     # --- 1 位のサイト ---
-    t = wb.create_sheet("1位のサイト", 1)
+    t = wb.create_sheet("1位のサイト", 2)
     t.sheet_view.showGridLines = False
     t.column_dimensions["A"].width = 34
     t["A1"] = f"各検索語で 1 位に出たサイト（{day}）— 競合・まとめ記事の把握用"
@@ -523,9 +703,10 @@ def main(src, out, day=None):
     t.freeze_panes = "B4"
 
     # --- データ ---
-    d = wb.create_sheet("データ", 2)
+    d = wb.create_sheet("データ", 3)
     cols = ["date", "browser_profile", "engine", "device", "os", "locale", "keyword", "group", "rank", "url",
-            "local_rank", "has_local_pack", "top10", "status", "check_url"]
+            "local_rank", "has_local_pack", "top10", "status", "check_url",
+            "ai_overview", "ai_overview_own", "featured_snippet_own", "paa_own"] + ["rank_" + c["id"] for c in CFG.get("competitors", [])]
     d.append(cols)
     style_header(d, 1, 1, len(cols))
     for rec in best.values():
@@ -536,15 +717,15 @@ def main(src, out, day=None):
     d.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{d.max_row}"
 
     # --- 説明 ---
-    n = wb.create_sheet("説明", 3)
+    n = wb.create_sheet("説明", 4)
     n.column_dimensions["A"].width = 120
     st = Counter((r["browser_profile"], r["status"] if r["status"] == "ok" else "失敗") for r in best.values())
     lines = [
         ("この表の見方", True),
         (f"・計測日 {day}。毎朝ベトナム時間 7 時台に自動で計測し、Google スプレッドシート「japangreen_検索順位」の ranks シートに追記している（このファイルはその抜粋）。", False),
         ("・順位は「通常の検索結果」だけを数えた当院（japangreen.vn）の順位。広告・地図の枠・AI の概要は数えない。30 位までに無ければ「圏外」。", False),
-        ("・「組」は検索語 × ブラウザ × 地点の組み合わせ（1 日 173 組）。前日比は、その前にデータがある日と比べている。", False),
-        ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ、Yahoo! JAPAN（PC）。Firefox・Mac の Safari は Chrome（PC）と同じ結果。", False),
+        (f"・「組」は検索語 × ブラウザ × 地点の組み合わせ（1 日 {len(combos_all())} 組）。前日比は、その前にデータがある日と比べている（ブラウザを足した日は、両方の日に計測したブラウザだけで比べる）。", False),
+        ("・ブラウザは検索エンジン×端末で代表させている: Chrome（PC）＝Google パソコン、Edge（PC）＝Bing パソコン、Safari（iPhone）＝Google スマホ（iPhone）、Chrome（Android）＝Google スマホ（Android・2026-11-13 から）、Yahoo! JAPAN（PC）。Firefox・Mac の Safari は Chrome（PC）と、iPhone の Chrome は Safari（iPhone）と同じ結果。", False),
         ("・地点は日本＝国単位、ベトナム＝ハノイ市（2026-11-06 から。それ以前のベトナムは国単位なので比べない）。"
          "ログインや閲覧履歴の影響は含まない（各自の画面とは多少ずれる）。", False),
         ("・地図の枠: 数字＝枠の中の当院の位置、「当院なし」＝枠は出たが当院がいない、「—」＝枠が出ない。Yahoo! JAPAN は対象外。", False),
