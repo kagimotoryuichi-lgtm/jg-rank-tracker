@@ -56,6 +56,12 @@
       {"kw": "vaccination Hanoi", "group": "general"}
     ]
   },
+  "serp_check": {
+    "_note": "2026-11-13: DataForSEO の Bing が別の検索語の結果ページを返すことがある（11/5〜11/13 で取得の約 4 割、日本×日本語では 63%）。上位 top 件に terms のどれも無ければ「結果の不一致」として、40102 と同じく最大 retry_no_results 回まで送り直す。それでも不一致なら status を error serp-mismatch にして圏外に数えない",
+    "engines": ["bing"],
+    "top": 5,
+    "terms": ["ハノイ", "hanoi", "hà nội", "ha noi", "ベトナム", "vietnam", "việt nam", "viet nam", ".vn", "ジャパングリーン", "ジャパン グリーン", "ジャパン・グリーン", "japan green", "japangreen", "japan-green"]
+  },
   "yahoo_jp": {"actor": "rainminer~yahoo-co-jp-search-scraper", "max_items": 30},
   "poll": {"interval_sec": 60, "timeout_min": 45}
 }

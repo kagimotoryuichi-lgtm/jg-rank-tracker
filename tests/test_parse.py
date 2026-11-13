@@ -279,3 +279,100 @@ class MigrateCsvTest(unittest.TestCase):
         self.assertNotIn("ai_overview", run.HEADER)
         self.assertNotIn("ai_overview_own", run.HEADER)
         self.assertEqual(run.HEADER[17:19], ["featured_snippet_own", "paa_own"])
+
+
+def _organic(*entries):
+    """(url, title) の組から DataForSEO の task を作る（serp_check の試験用）。"""
+    items = [{"type": "organic", "rank_group": n, "url": u, "domain": u.split("/")[2], "title": t}
+             for n, (u, t) in enumerate(entries, 1)]
+    return {"status_code": 20000, "result": [{"items": items, "se_results_count": 1, "check_url": "https://www.bing.com/search?q=x&cc=jp"}]}
+
+
+GARBAGE = _organic(("https://www.r-project.org/", "R: The R Project for Statistical Computing"),
+                   ("https://en.wikipedia.org/wiki/R_(programming_language)", "R (programming language) - Wikipedia"),
+                   ("https://cran.r-project.org/", "The Comprehensive R Archive Network"))
+
+
+class SerpCheckTest(unittest.TestCase):
+    """2026-11-13: DataForSEO の Bing が別の検索語の結果ページを返す件の検出と送り直し。"""
+
+    def setUp(self):
+        self.cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        self.terms = self.cfg["serp_check"]["terms"]
+
+    def test_matches(self):
+        from tracker.parse import serp_matches
+        self.assertFalse(serp_matches(GARBAGE, self.terms))
+        ok_title = _organic(("https://lotus-clinic.com/", "LOTUS CLINIC Hanoi | 日本語対応"))
+        self.assertTrue(serp_matches(ok_title, self.terms))
+        ok_url = _organic(("https://example.com/%E3%83%8F%E3%83%8E%E3%82%A4/", ""))  # URL の中の「ハノイ」（エンコード済み）
+        self.assertTrue(serp_matches(ok_url, self.terms))
+        ok_brand = _organic(("https://www.japan-green.com.sg/", "Japan Green Clinic"))
+        self.assertTrue(serp_matches(ok_brand, self.terms))
+        self.assertTrue(serp_matches({"status_code": 20000, "result": [{"items": []}]}, self.terms))  # 通常の結果が無ければ判定しない
+        late = _organic(*[(f"https://x{i}.com/", "unrelated") for i in range(5)], ("https://www.japangreen.vn/", "Japan Green"))
+        self.assertFalse(serp_matches(late, self.terms))  # 6 位以下は見ない
+
+    def test_only_bing_is_checked(self):
+        self.assertTrue(run.mismatched(GARBAGE, self.cfg, "bing"))
+        self.assertFalse(run.mismatched(GARBAGE, self.cfg, "google"))
+        st, parsed = run.dfs_row_parts(GARBAGE, self.cfg, "bing")
+        self.assertEqual(st, run.MISMATCH)
+        self.assertNotIn("rank", parsed)  # 順位は入れない（圏外に数えない）
+        self.assertEqual(parsed["top10"][0], "www.r-project.org")
+        self.assertEqual(run.dfs_row_parts(GARBAGE, self.cfg, "google")[0], "ok")
+
+    def _run(self, answer):
+        import argparse
+        import os
+        import tempfile
+        from unittest import mock
+        ok = json.loads((FX / "dataforseo_task.json").read_text(encoding="utf-8"))
+        posted, calls = [], {"bing": 0}
+
+        class FakeDFS:
+            def __init__(self, *a):
+                self.n = 0
+
+            def post_tasks(self, eng, tasks, out=None, failed=None):
+                out = [] if out is None else out
+                for t in tasks:
+                    self.n += 1
+                    posted.append((eng, t["tag"]))
+                    out.append((t["tag"], f"{eng}-{self.n}", 0.002))
+                return out
+
+            def wait_all(self, ids, *a):
+                res = {}
+                for tid, eng in ids.items():
+                    if eng == "bing":
+                        calls["bing"] += 1
+                        res[tid] = answer(calls["bing"], ok)
+                    else:
+                        res[tid] = ok
+                return res
+
+        cfg = dict(self.cfg)
+        cfg["poll"] = {"interval_sec": 0, "timeout_min": 1}
+        args = argparse.Namespace(dry_run=False, limit=1, no_yahoo=True, sheet_test=False)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("tracker.clients.DataForSEO", FakeDFS), \
+                mock.patch.dict(os.environ, {"SHEET_WEBAPP_URL": ""}), mock.patch.object(run, "ROOT", Path(tmp)):
+            rows, errors = run.run(cfg, args, log=lambda *_: None)
+        return rows, errors, posted
+
+    def test_mismatch_is_resent_and_recovered(self):
+        # Bing の 1 回目の 1 件目だけ不一致、送り直しで正しい結果
+        rows, errors, posted = self._run(lambda n, ok: GARBAGE if n == 1 else ok)
+        self.assertEqual(errors, [])
+        self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 + 1)  # 4 地点 + 送り直し 1
+        self.assertTrue(all(r["status"] == "ok" for r in rows))
+
+    def test_persistent_mismatch_is_not_counted_as_out_of_range(self):
+        # Bing は何度送っても不一致 → 2 回まで送り直し、記録は error serp-mismatch（順位は空欄）
+        rows, errors, posted = self._run(lambda n, ok: GARBAGE)
+        bing = [r for r in rows if r["engine"] == "bing"]
+        self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 * 3)  # 初回 + 送り直し 2 回
+        self.assertTrue(all(r["status"] == run.MISMATCH for r in bing))
+        self.assertTrue(all(r["rank"] == "" for r in bing))
+        self.assertEqual(len(errors), 4)
+        self.assertTrue(all(r["status"] == "ok" for r in rows if r["engine"] == "google"))

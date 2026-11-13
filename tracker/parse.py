@@ -1,5 +1,5 @@
 """検索結果（API の応答）から当院の順位などを取り出す。外部ライブラリを使わない純粋関数だけ置く。"""
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 OUT_OF_RANGE = ""  # 圏外は空欄（スプレッドシート・Looker Studio で数値として扱いやすい）
 
@@ -66,6 +66,25 @@ def serp_features(items, site_domain, engine):
         "featured_snippet_own": own_in("featured_snippet"),
         "paa_own": own_in("people_also_ask"),
     }
+
+
+def serp_matches(task, terms, top=5):
+    """結果ページが検索語に合っているか。通常の検索結果の上位 top 件のタイトル・説明・URL に terms のどれかがあれば True。
+    2026-11-13: DataForSEO の Bing が、依頼と別の検索語の結果ページを返すことがある（例: 「ハノイ 病院」で zhihu.com、
+    「Japan Green Vietnam Clinic」で r-project.org）。check_url は依頼どおりで、同じ URL を実際の Bing で開くと正しい結果になる。
+    当院の検索語はどれも「ハノイ／Hanoi／ジャパングリーン／Japan Green」を含むので、関係するページなら上位に必ず出てくる。
+    通常の検索結果が 1 件も無いときは判定しない（True）。"""
+    res = (task.get("result") or [None])[0] or {}
+    organic = [i for i in (res.get("items") or []) if i.get("type") == "organic"][:top]
+    if not organic:
+        return True
+    terms = [t.lower() for t in terms]
+    for i in organic:
+        text = " ".join(str(i.get(k) or "") for k in ("title", "description", "url", "domain", "breadcrumb"))
+        text = unquote(text).lower()
+        if any(t in text for t in terms):
+            return True
+    return False
 
 
 def parse_dataforseo(task, site_domain, brand_names, competitors=None, engine="google"):

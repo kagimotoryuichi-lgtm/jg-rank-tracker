@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from tracker.parse import parse_dataforseo, parse_yahoo_jp  # noqa: E402
+from tracker.parse import parse_dataforseo, parse_yahoo_jp, serp_matches  # noqa: E402
 from tracker.sheets import HEADER, FEATURE_HEADER  # noqa: E402
 
 ICT = dt.timezone(dt.timedelta(hours=7))  # 記録の日付はベトナム時間（2026-11-05 から）
@@ -127,6 +127,31 @@ def migrate_csv(path):
     return True
 
 
+MISMATCH = "error serp-mismatch（DataForSEO が別の検索語の結果ページを返した）"
+
+
+def mismatched(t, cfg, engine):
+    """2026-11-13: 取得できた（20000）のに、結果ページが検索語に合っていない（serp_check の対象エンジンだけ見る）。"""
+    sc = cfg.get("serp_check") or {}
+    return (t.get("status_code") == 20000 and engine in sc.get("engines", [])
+            and not serp_matches(t, sc.get("terms", []), sc.get("top", 5)))
+
+
+def needs_retry(t, cfg, engine):
+    """送り直す結果: 結果なし（40102）か、結果ページの不一致。"""
+    return t.get("status_code") == 40102 or mismatched(t, cfg, engine)
+
+
+def dfs_row_parts(t, cfg, engine):
+    """DataForSEO の結果 1 件 → (status, parsed)。不一致は順位を入れず、確かめ用に上位のドメインと check_url だけ残す。"""
+    if t.get("status_code") != 20000:
+        return f"error {t.get('status_code')} {t.get('status_message')}", {}
+    parsed = parse_dfs(t, cfg, engine)
+    if mismatched(t, cfg, engine):
+        return MISMATCH, {k: parsed.get(k, "") for k in ("top10", "results_count", "check_url")}
+    return "ok", parsed
+
+
 def parse_dfs(t, cfg, engine):
     return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine)
 
@@ -179,11 +204,13 @@ def run(cfg, args, log=print):
             try:
                 got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
                 # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ 最大 2 回まで送り直す
+                # 2026-11-13: 結果ページが検索語に合っていない組（serp_check）も同じく送り直す
                 for attempt in range(cfg.get("retry_no_results", 2)):
-                    retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if got.get(tid, {}).get("status_code") == 40102]
+                    retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if needs_retry(got.get(tid, {}), cfg, eng)]
                     if not retry:
                         break
-                    log(f"  結果なし（40102）を送り直し {attempt + 1} 回目: {len(retry)} 件")
+                    n_mis = sum(1 for tid, eng, _ in retry if mismatched(got.get(tid, {}), cfg, eng))
+                    log(f"  送り直し {attempt + 1} 回目: {len(retry)} 件（結果なし 40102 {len(retry) - n_mis}・結果の不一致 {n_mis}）")
                     new = {}
                     for eng in ("google", "bing"):
                         ts = [task_of[tag] for _, e, tag in retry if e == eng]
@@ -211,9 +238,11 @@ def run(cfg, args, log=print):
                 if t is None:
                     rows.append(row_of(date, by_tag[tag], {}, f"error 結果未取得 task_id={tid}"))
                     continue
-                st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
-                parsed = parse_dfs(t, cfg, eng) if st == "ok" else {}
+                st, parsed = dfs_row_parts(t, cfg, eng)
                 rows.append(row_of(date, by_tag[tag], parsed, st))
+            n_mis = sum(1 for r in rows if r["status"] == MISMATCH)
+            if n_mis:
+                log(f"  送り直しても結果が不一致のまま: {n_mis} 件（圏外に数えず error serp-mismatch で記録）")
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:
@@ -271,8 +300,7 @@ def recover(cfg, args, log=print):
     rows = []
     for tag, (_, tid, eng) in pick.items():
         t = got.get(tid, {})
-        st = "ok" if t.get("status_code") == 20000 else f"error {t.get('status_code')} {t.get('status_message')}"
-        parsed = parse_dfs(t, cfg, eng) if st == "ok" else {}
+        st, parsed = dfs_row_parts(t, cfg, eng)
         rows.append(row_of(date, by_tag[tag], parsed, st))
     save(rows, args, log)
     errors = [r for r in rows if r["status"].startswith(("error", "timeout"))]
