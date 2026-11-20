@@ -23,6 +23,7 @@ from openpyxl.utils import get_column_letter  # noqa: E402
 HANOI_FROM = "2026-11-06"      # ベトナムをハノイ市で計測し始めた日（11/5 は国単位）
 COMP_FROM = "2026-11-13"       # 競合 4 院の順位を取り始めた日
 BING_CHECK_FROM = "2026-11-14"  # Bing の「別の語の結果」を取得失敗として数え始めた日
+GOOGLE_ODD_FROM = "2026-11-14"  # Google の結果ページの異常が疑われ始めた日（2026-11-16 の調査。これ以降は要確認）
 GOOGLE = ("chrome-pc", "iphone")
 GRAY = "8A8F98"
 SERIES_COLORS = ["2F4078", "249835", "E0533D", "C98A1E", "7B61C9", "0F9D8A"]
@@ -195,7 +196,7 @@ def main(src, out, start=None, end=None):
             ws.cell(r, c).fill = fill(B.CARD_BG)
     for r, txt, font in ((5, "Google（PC・iPhone）の最新日", F(size=9, color="555B66", bold=True)),
                          (6, md(last), F(size=24, bold=True, color=NAVY)),
-                         (7, f"比べる日 {md(base)}（ハノイ市での計測の初日）", F(size=9, color=GRAY))):
+                         (7, f"比べる日 {md(base)}（" + ("ハノイ市での計測の初日" if base == HANOI_FROM else "期間の最初の計測日") + "）", F(size=9, color=GRAY))):
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
         x = ws.cell(r, 1, txt)
         x.font, x.alignment = font, CENTER
@@ -209,12 +210,17 @@ def main(src, out, start=None, end=None):
     ga, gl = D.avg(first_half, keys_where(GOOGLE, group="general")), D.avg(last_half, keys_where(GOOGLE, group="general"))
     B.card(ws, 4, 11, "一般語の平均順位", f"{gl:.1f}", "位", None, sub=f"前半（{fh}）は {ga:.1f} 位")
     ws.cell(8, 3, f"※ 上の 3 つは Google の {tot} 組（検索語 × 地点 × PC・iPhone）。平均順位は後半（{lh}）の Google の平均で、圏外は 31 位とみなす").font = F(size=8, color=GRAY)
+    odd = end >= GOOGLE_ODD_FROM
+    if odd:
+        ws.cell(9, 1, f"※ 要確認: {md(GOOGLE_ODD_FROM)} 以降の Google は、計測会社が返す結果ページの異常が疑われ、実際より低く出ている可能性が高い（実際の Google では当院は 1〜2 位）。"
+                "上のカード・後半の平均・「下がった組」は、順位が下がった証拠としては使わない。くわしくは「説明」シート").font = F(size=9, bold=True, color="C77700")
 
     # --- 推移のグラフ（Google の組数） ---
     head, lastr = graph_block(g, "Google（PC・iPhone）の組数の推移", ["日付", "30 位以内", "10 位以内", "1 位"], [
         [md(d)] + ([D.count(d, gkeys, k)[0] for k in (30, 10, 1)] if d in gdays else [None] * 3) for d in days])
     ws.cell(10, 1, "Google で順位に入った組数の推移（日別）").font = F(bold=True, size=11, color=NAVY)
-    ws.cell(10, 5, f"※ {md(days[0])} のベトナムは国単位の計測（ハノイ市は {md(HANOI_FROM)} から）。空白＝計測できなかった日").font = F(size=8, color=GRAY)
+    ws.cell(10, 5, (f"※ {md(days[0])} のベトナムは国単位の計測（ハノイ市は {md(HANOI_FROM)} から）。" if days[0] < HANOI_FROM else "※ ")
+            + "空白＝計測できなかった日" + (f"。{md(GOOGLE_ODD_FROM)} 以降は要確認" if odd else "")).font = F(size=8, color=GRAY)
     lc = line_chart(g, head, lastr, 3, 27.5, 8.5, ranks=False)
     ws.add_chart(lc, "A11")
 
@@ -269,7 +275,7 @@ def main(src, out, start=None, end=None):
                                   B.TextBlock(B.InlineFont(rFont=B.FONT, sz=8, color="333333"), txt
                                               + (f" ほか {len(items) - 12} 組" if len(items) > 12 else ""))])
         x.alignment = Alignment(vertical="top", wrap_text=True)
-        ws.row_dimensions[rr].height = 44
+        ws.row_dimensions[rr].height = 60
 
     # ================= 2. 語句ごとの推移 =================
     t = wb.create_sheet("語句ごとの推移")
@@ -519,10 +525,15 @@ def main(src, out, start=None, end=None):
         (f"・前半＝{fh}、後半＝{lh}。日ごとの上下が大きいので、初日と最終日ではなく前半と後半の平均で比べている。", False),
         ("", False),
         ("数字を読むときの注意", True),
-        (f"・{('・'.join(md(d) for d in missing)) or 'なし'} は DataForSEO の残高切れで Google・Bing が取れていない（Yahoo! JAPAN だけある）。グラフは空白にしている。", False),
-        (f"・ベトナムの地点は {md(HANOI_FROM)} からハノイ市（{md(days[0])} は国単位）。{md(days[0])} のベトナムの数字は比べる対象から外した。", False),
+        ((f"・{'・'.join(md(d) for d in missing)} は DataForSEO の残高切れで Google・Bing が取れていない（Yahoo! JAPAN だけある）。グラフは空白にしている。"
+          if missing else "・この期間に、Google をまるごと計測できなかった日は無い。"), False),
+    ] + ([(f"・ベトナムの地点は {md(HANOI_FROM)} からハノイ市（{md(days[0])} は国単位）。{md(days[0])} のベトナムの数字は比べる対象から外した。", False)]
+         if days[0] < HANOI_FROM else []) + ([
+        (f"・Google は {md(GOOGLE_ODD_FROM)} から、指名語で当院が圏外になる組が急に増えた。実際の Google では当院は 1〜2 位に出ており（11/16 に 3 語で確認）、当院が消えた結果ページではグループの公式サイトも一緒に消えている。"
+         "計測会社（DataForSEO）が返す結果ページの異常とみられ、この日以降の Google の数字は実際より低い可能性が高い（サーチコンソールでの裏づけは未了）。後半の平均・増減・「下がった組」は、そのつもりで読む。", False)]
+         if end >= GOOGLE_ODD_FROM else []) + [
         (f"・Edge（PC）＝Bing は、計測会社が別の検索語の結果を返すことがある。{md(BING_CHECK_FROM)} からはそれを取得失敗として数えるが、それより前は圏外として混じっている。Bing の日ごとの上下は実際の順位の動きとは限らない。上昇・下降の一覧からは Bing を外した。", False),
-        (f"・{md(last)} の Bing は 52 組のうち取得できたのが少ない（下の一覧）。Microsoft の障害（11/12〜13）と時期が重なるが、原因は確認できていない。", False),
+        ("・Bing は取得できた組が少ない日がある（下の一覧）。取得できなかった組は順位が分からず、圏外には数えていない。", False),
         (f"・競合 4 院の順位は {md(COMP_FROM)} から取り始めた。それより前の比較はできない。", False),
         ("・Google の順位は日によって大きく動く（同じ語で 1 位の翌日に 20 位台など）。1 日だけの数字で判断しない。", False),
         ("", False),
