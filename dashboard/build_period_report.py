@@ -1,6 +1,7 @@
 """検索順位の「期間報告書」Excel を作る（SEO の初心者が読む報告書の体裁。A4 縦で印刷・PDF にできる）。
 
-使い方: python -X utf8 dashboard/build_period_report.py <ranks.csv> <出力.xlsx> [開始日] [終了日]
+使い方: python -X utf8 dashboard/build_period_report.py <ranks.csv> <出力.xlsx> [開始日] [終了日] [講評の文のファイル]
+- 講評の文のファイル（UTF-8 のテキスト）を渡すと「8 章 講評」を足す。行頭「## 」＝見出し、「- 」＝箇条書き、「! 」＝注意の枠、ほかは本文（2026-11-20 追加）
 - 毎日のダッシュボード（build_excel_dashboard.py）・期間まとめ（build_period_summary.py）とは別のファイル
 - 各章に「狙い・見方・注意・読み取れること」を書く。先頭に結論、2 枚目に SEO の基本と用語
 - Google は GOOGLE_ODD_FROM 以降を「要確認」として分ける（計測会社が返す結果ページの異常が疑われるため。
@@ -267,7 +268,7 @@ class Sheet:
         setup(self.ws, **kw)
 
 
-def main(src, out, start=None, end=None):
+def main(src, out, start=None, end=None, review=None):
     rows = B.load(src)
     all_days = sorted({r["date"] for r in rows})
     start, end = start or all_days[0], end or all_days[-1]
@@ -315,12 +316,21 @@ def main(src, out, start=None, end=None):
     bing_got = [D.count(d, bkeys)[1] for d in days]
     odd_n = {d: odd_rows(d) for d in days}
     b_avg, g_avg = ok_avg(brand), ok_avg(general)
-    y_prev = y30[:-1]
-    y_jump = len(days) > 1 and y30[-1] >= max(y_prev) + 5
-    if y_jump:
-        y_text = (f"Yahoo! JAPAN（日本から・日本語 {len(ykeys)} 語）は、{md(days[0])}〜{md(days[-2])} は 30 位以内が {rng(y_prev)} 語でしたが、"
+    # Yahoo! JAPAN の段差: ある日を境に、それ以降ずっと 5 語以上多い状態が続いているか（2026-11-20: 最終日だけでなく途中の日からも見る）
+    js = next((i for i in range(1, len(days)) if min(y30[i:]) >= max(y30[:i]) + 5), None)
+    y_jump = js is not None
+    y_prev = y30[:js] if y_jump else y30
+    y_after = y30[js:] if y_jump else []
+    y_one = y_jump and len(y_after) == 1
+    y_before_p = (md(days[0]) if js == 1 else f"{md(days[0])}〜{md(days[js - 1])}") if y_jump else ""
+    if y_one:
+        y_text = (f"Yahoo! JAPAN（日本から・日本語 {len(ykeys)} 語）は、{y_before_p} は 30 位以内が {rng(y_prev)} 語でしたが、"
                   f"最終日の {md(end)} に {y30[-1]} 語（上位 10 件は {y10[-1]} 語）へ急に増えました。" + YAHOO_NOTE.get(end, "")
                   + "ただし 1 日だけの記録なので、続くかどうかを確認します。")
+    elif y_jump:
+        y_text = (f"Yahoo! JAPAN（日本から・日本語 {len(ykeys)} 語）は、{y_before_p} は 30 位以内が {rng(y_prev)} 語でしたが、"
+                  f"{md(days[js])} に急に増え、{md(end)} まで {len(y_after)} 日続けて {rng(y_after)} 語（上位 10 件は {rng(y10[js:])} 語）でした。"
+                  + YAHOO_NOTE.get(days[js], ""))
     else:
         y_text = f"Yahoo! JAPAN（日本から・日本語 {len(ykeys)} 語）は期間を通して安定しています。30 位以内は毎日 {rng(y30)} 語、上位 10 件は {rng(y10)} 語でした。"
 
@@ -369,7 +379,8 @@ def main(src, out, start=None, end=None):
     if odd_days:
         unk.append(f"{oddp} の Google の順位（指名語の 30 位以内は {rng(b30_odd)} 通りと記録されていますが、実際より低く出ている疑いがあります）。")
     unk.append(f"Bing（Edge）の順位。計測会社が別の検索語の結果を返すことがあり、毎日 {len(bkeys)} 通りのうち取得できたのは {rng(bing_got)} 通りでした。日ごとの上下は実際の動きとは限りません。")
-    unk.append(f"ホームページの改善の効果。{len(days)} 日間という短い期間では、日々の揺れ・計測の異常・改善の効果を区別できません。")
+    unk.append(f"ホームページの改善の効果。{len(days)} 日間という短い期間では、日々の揺れ・計測の異常・改善の効果を区別できません。"
+               + ("計測を始めてからの記録をもとにした見立ては 8 章（講評）に書きました。" if review else ""))
     r = bullets(ws, r, unk)
     r = gap(ws, r)
     r = text(ws, r, 1, NCOL, "3. 次に確認すること", size=11, bold=True, color=NAVY)
@@ -377,7 +388,7 @@ def main(src, out, start=None, end=None):
         "サーチコンソールで、院名を含む検索の「掲載順位」を日別に見る（11/14 以降に落ちていなければ、計測側の異常と確定できます）。",
         "計測の異常が続くかどうかを数日見る。続く場合は、異常な結果を自動で見分けて取り直す仕組みを入れる／計測会社に報告する。",
         "一般語のうち「あと一歩」（11〜30 位）の語を、内容を充実させる候補として検討する（4 章の表）。"]
-        + ([f"Yahoo! JAPAN の {md(end)} の急な上昇が、明日以降も続くかを見る。"] if y_jump else []))
+        + ([f"Yahoo! JAPAN の {md(end)} の急な上昇が、明日以降も続くかを見る。"] if y_one else []))
     r = gap(ws, r)
 
     r = h2(ws, r, "数字で見る今回の期間")
@@ -394,8 +405,8 @@ def main(src, out, start=None, end=None):
         ("指名語・Google・平均順位", f"{b_avg:.1f} 位" if b_avg else "—", f"{okp}。1 に近いほど良い。圏外は 31 位として計算。"),
         ("一般語・Google・30 位以内", f"{rng(g30)} / {len(general)}", f"{okp}。診療内容・地域の検索で当院が 30 位以内に出た通り数。"),
         ("一般語・Google・上位 10 件", f"{rng(g10)} / {len(general)}", f"{okp}。検索結果の最初のほうに出た通り数。"),
-        ("Yahoo! JAPAN・30 位以内", (f"{rng(y_prev)} → {y30[-1]} / {len(ykeys)}" if y_jump else f"{rng(y30)} / {len(ykeys)}"),
-         (f"{md(days[0])}〜{md(days[-2])} → {md(end)}。最終日に急増（1 日だけの記録）。" if y_jump else "全期間。") + "日本から日本語で検索した場合。"),
+        ("Yahoo! JAPAN・30 位以内", (f"{rng(y_prev)} → {rng(y_after)} / {len(ykeys)}" if y_jump else f"{rng(y30)} / {len(ykeys)}"),
+         ((f"{y_before_p} → {md(end)}。最終日に急増（1 日だけの記録）。" if y_one else f"{y_before_p} → {md(days[js])}〜{md(end)}。{md(days[js])} に急増し、その後も続いている。") if y_jump else "全期間。") + "日本から日本語で検索した場合。"),
         ("Bing で取得できた数", f"{rng(bing_got)} / {len(bkeys)}", "全期間。取得できなかった分は順位が分かりません（圏外とは別）。"),
     ]
     for a, b_, c_ in table:
@@ -417,7 +428,8 @@ def main(src, out, start=None, end=None):
         "4 章　診療内容・地域で探す人（一般語）",
         "5 章　他院との比較",
         "6 章　条件別（地域・端末・検索エンジン）",
-        "7 章　データの注意点と、言えること・言えないこと",
+        "7 章　データの注意点と、言えること・言えないこと"]
+        + (["8 章　講評 ― 計測を始めてからの SEO の効果"] if review else []) + [
         "付録　検索語ごとの毎日の順位（全 " + str(n_all) + " 通り）"], size=10)
 
     # ================= 1 章 SEO の基本 =================
@@ -858,6 +870,24 @@ def main(src, out, start=None, end=None):
         "ホームページの改善が成功した・失敗した（期間が短く、日々の揺れと区別できません）。",
         "他院に患者さんを取られている・勝っている（順位は来院数ではありません）。",
         "この先も上がる・下がる（傾向を言うには、少なくとも数週間の記録が必要です）。"])
+
+    # ================= 8 章 講評（文のファイルを渡したときだけ） =================
+    if review:
+        lines = Path(review).read_text(encoding="utf-8").splitlines()
+        ws = Sheet(wb, "8 講評").ws
+        r = chapter(ws, "8 章", "講評 ― 計測を始めてからの SEO の効果", lines[0].strip() if lines else "")
+        for ln in lines[1:]:
+            ln = ln.rstrip()
+            if not ln:
+                r = gap(ws, r)
+            elif ln.startswith("## "):
+                r = h2(ws, r, ln[3:])
+            elif ln.startswith("- "):
+                r = bullets(ws, r, [ln[2:]])
+            elif ln.startswith("! "):
+                r = text(ws, r, 1, NCOL, ln[2:], size=10, bg=WARN_BG, color=WARN_FG, indent=1)
+            else:
+                r = text(ws, r, 1, NCOL, ln, size=10)
 
     # ================= 付録 =================
     ncol_a = 3 + len(days) + 1
