@@ -209,6 +209,13 @@ def bing_evidence(date, sent, got, task_of, cfg, log=print):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(records, ensure_ascii=False, indent=1), encoding="utf-8")
         log(f"  Bing の取れなかったタスクの資料 {len(records)} 件を保存: {out.relative_to(ROOT)}")
+        # 報告文を作るときに保存ファイルを落とさずに済むよう、要点もログに出す（1 件 1 行）
+        log("  資料の要点: task_id | 何回目 | 種類 | tag | 登録 UTC | result.keyword | datetime | se_results_count | check_url | 上位 5 件")
+        for r in records:
+            res = (r["task_get_advanced_response"].get("result") or [None])[0] or {}
+            top5 = [i.get("url") or i.get("domain") for i in (res.get("items") or []) if i.get("type") == "organic"][:5]
+            log(f"    {r['task_id']} | {r['attempt']} | {r['kind']} | {r['tag']} | {r['posted_at_utc']} | {r['result_keyword']} | "
+                f"{res.get('datetime')} | {res.get('se_results_count')} | {res.get('check_url')} | {' '.join(str(u) for u in top5)}")
 
 
 def dfs_task(j, cfg):
