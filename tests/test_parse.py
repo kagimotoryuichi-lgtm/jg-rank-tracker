@@ -390,6 +390,16 @@ class PoisonDiagnoseTest(unittest.TestCase):
         self.assertEqual(run.from_web_count(t), 2)
         self.assertEqual(run.from_web_count({}), 0)
 
+    def test_resolve_poisoned_only_on_google(self):
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        jobs = run.build_jobs(cfg, None, yahoo=False)
+        g = [run.dfs_task(j, cfg) for j in jobs if j["engine"] == "google"]
+        b = [run.dfs_task(j, cfg) for j in jobs if j["engine"] == "bing"]
+        self.assertTrue(g and all(t.get("resolve_poisoned_results") is True for t in g))
+        self.assertTrue(b and all("resolve_poisoned_results" not in t for t in b))
+        off = dict(cfg, resolve_poisoned_results=False)
+        self.assertTrue(all("resolve_poisoned_results" not in run.dfs_task(j, off) for j in jobs))
+
     def test_targets_google_brand_only(self):
         cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         jobs = [j for j in run.build_jobs(cfg, None, yahoo=False) if j["engine"] == "google" and j["group"] == "brand"]

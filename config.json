@@ -3,6 +3,8 @@
   "brand_names": ["japan green vietnam", "ジャパン グリーン ベトナム", "ジャパングリーン ベトナム", "ジャパン・グリーン・ベトナム"],
   "_note_locations": "2026-11-06 から VN-ja・VN-en の地点を国（2704）→ハノイ市（1028580 \"Hanoi,Ha Noi,Vietnam\"、Google・Bing とも対応）に変更。日本は国（2392）のまま",
   "depth": 30,
+  "resolve_poisoned_results": true,
+  "_note_poisoned": "2026-11-26: Google の依頼に resolve_poisoned_results を付ける（鍵本さんの決定）。Google が自動の検索にだけ本来の結果を差し替えたページ（poisoned SERP）を返す問題への DataForSEO の対策（2026-11-16 公表）。試運転 run #55 で、公式サイトが上位 10 件に無い指名語の組が 17 → 1。費用は 1 件 +$0.0006（Google 104 件で 1 日 約 +$0.06）。戻すときは false",
   "_note_iphone": "DataForSEO はブラウザを選べない（端末と OS だけ）。iPhone の Safari と Chrome は同じ Google のスマホ（iOS）の結果になるので、iphone の 1 本で両方を表す（2026-11-12）",
   "_note_ai_overview": "AI 概要（AI による概要）は取得しない（2026-11-12 鍵本さんの決定）。列 ai_overview・ai_overview_own も CSV・シートから削除した",
   "competitors": [

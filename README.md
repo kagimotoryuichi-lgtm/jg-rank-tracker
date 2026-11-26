@@ -16,3 +16,4 @@ japangreen.vn の検索順位を毎日計測する（Google・Bing＝DataForSEO�
 - 2026-11-12: Android（Chrome）と AI 概要（AI による概要）は計測しない（鍵本さんの決定）。プロファイルから android を外し、AI 概要の列（ai_overview・ai_overview_own）は CSV・シート（ranks・ranks_test の R・S 列）から削除した。競合の順位・強調スニペット・他の人はこちらも質問は続ける。1 日 173 件
 - 2026-11-13: DataForSEO の Bing が別の検索語の結果ページを返すことが分かった（11/5〜11/13 で取得の約 4 割、日本×日本語で 63%。check_url は依頼どおりで、実際の Bing では正しい）。`config.json` の `serp_check`: 上位 5 件に「ハノイ・ベトナム・ジャパングリーン」などの語が無ければ不一致として最大 2 回送り直し、それでも不一致なら status を `error serp-mismatch` にして圏外に数えない（11/14 の計測から）
 - 2026-11-26: 送り直しを 2 回 → 1 回に（`config.json` の `retry_no_results`。11/22 以降の Bing は 1 回目で約 8 割が失敗し、送り直しの費用が 1 日 $0.12〜0.16 だったため）。最後まで取れなかった Bing のタスク ID をログに残す（DataForSEO への報告用）
+- 2026-11-26: Google の依頼に `resolve_poisoned_results: true` を付ける（`config.json`）。11/14 ごろから Google が自動の検索にだけ本来の結果を差し替えたページ（poisoned SERP）を返し、指名語で当院もグループのサイトも上位に出ない組が毎日 9〜17 組あった。試運転（`mode=poison-test`）で 17 → 1。費用は 1 件 +$0.0006

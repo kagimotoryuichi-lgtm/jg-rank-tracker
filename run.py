@@ -156,6 +156,17 @@ def parse_dfs(t, cfg, engine):
     return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine)
 
 
+def dfs_task(j, cfg):
+    """DataForSEO に送る 1 件。2026-11-26: Google には resolve_poisoned_results を付ける（config の設定・鍵本さんの決定）。
+    Google が自動の検索にだけ本来の結果を差し替えたページ（poisoned SERP）を返すため。費用は 1 件 +$0.0006（標準キュー）。"""
+    t = {"keyword": j["kw"], "location_code": j["locale"]["location_code"],
+         "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
+         "depth": cfg["depth"], "tag": tag_of(j)}
+    if j["engine"] == "google" and cfg.get("resolve_poisoned_results"):
+        t["resolve_poisoned_results"] = True
+    return t
+
+
 def run(cfg, args, log=print):
     date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
     jobs = build_jobs(cfg, args.limit, yahoo=not args.no_yahoo)
@@ -174,10 +185,7 @@ def run(cfg, args, log=print):
     elif dfs_jobs:
         from tracker.clients import DataForSEO
         by_tag = {tag_of(j): j for j in dfs_jobs}
-        task_of = {tag_of(j): {"keyword": j["kw"], "location_code": j["locale"]["location_code"],
-                               "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-                               "depth": cfg["depth"], "tag": tag_of(j)}  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
-                   for j in dfs_jobs}
+        task_of = {tag_of(j): dfs_task(j, cfg) for j in dfs_jobs}  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
         ids = {}
         d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
         # 2026-11-10: Bing の登録が 402 で断られたとき、登録済み（課金済み）の Google まで捨てていた。
@@ -383,9 +391,7 @@ def diagnose_poison(cfg, log=print):
     from tracker.clients import DataForSEO
     date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
     jobs = [j for j in build_jobs(cfg, None, yahoo=False) if j["engine"] == "google" and j["group"] == "brand"]
-    tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
-              "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
-              "depth": cfg["depth"], "resolve_poisoned_results": True, "tag": tag_of(j)} for j in jobs]
+    tasks = [dict(dfs_task(j, cfg), resolve_poisoned_results=True) for j in jobs]
     by_tag = {tag_of(j): j for j in jobs}
     d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
     posted, failed = [], []
