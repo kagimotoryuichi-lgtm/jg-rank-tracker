@@ -208,8 +208,6 @@ class SecretSafetyTest(unittest.TestCase):
             self.assertEqual(run.rows_recorded("2026-11-07", Path(tmp) / "none.csv"), 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 COMP = [{"id": "sakura", "domains": ["sakurahanoi.com"]}, {"id": "dym", "domains": ["jp-dymmedicalcenter.com.vn", "dym.asia"]}]
@@ -376,3 +374,27 @@ class SerpCheckTest(unittest.TestCase):
         self.assertTrue(all(r["rank"] == "" for r in bing))
         self.assertEqual(len(errors), 4)
         self.assertTrue(all(r["status"] == "ok" for r in rows if r["engine"] == "google"))
+
+
+class PoisonDiagnoseTest(unittest.TestCase):
+    """2026-11-26: resolve_poisoned_results の試し（記録はしない診断）"""
+
+    def test_from_web_count(self):
+        t = {"result": [{"items": [
+            {"type": "organic", "checks": {"from_web": True}},
+            {"type": "organic", "checks": ["from_web"]},
+            {"type": "organic", "checks": {"from_web": False}},
+            {"type": "organic"},
+            {"type": "local_pack", "checks": ["from_web"]},
+        ]}]}
+        self.assertEqual(run.from_web_count(t), 2)
+        self.assertEqual(run.from_web_count({}), 0)
+
+    def test_targets_google_brand_only(self):
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        jobs = [j for j in run.build_jobs(cfg, None, yahoo=False) if j["engine"] == "google" and j["group"] == "brand"]
+        self.assertEqual(len(jobs), 24)  # 指名語 12 組 × Chrome（PC）・Safari（iPhone）
+
+
+if __name__ == "__main__":
+    unittest.main()

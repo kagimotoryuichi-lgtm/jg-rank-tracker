@@ -341,6 +341,75 @@ def diagnose_bing(cfg, log=print):
         log(f"{vname} | {kw} | {loc} | {t.get('status_code')} {t.get('status_message')} | {len(items)} | {len(org)} | {c}")
 
 
+GROUP_DOMAINS = ("japangreen.vn", "japan-green.com.sg", "japangreen.co.uk", "greenclinic.com.cn")
+
+
+def from_web_count(task):
+    """resolve_poisoned_results で差し替えを戻した通常の検索結果の数（checks に from_web が付いた項目）。"""
+    res = (task.get("result") or [None])[0] or {}
+    n = 0
+    for i in res.get("items") or []:
+        if i.get("type") != "organic":
+            continue
+        ch = i.get("checks")
+        if (isinstance(ch, dict) and ch.get("from_web")) or (isinstance(ch, (list, tuple)) and "from_web" in ch):
+            n += 1
+    return n
+
+
+def morning_of(date, path=None):
+    """その日の本番の Google の行 → {(profile, locale, keyword): row}（試運転の比べる相手）"""
+    path = path or ROOT / "data/ranks.csv"
+    out = {}
+    if Path(path).exists():
+        with open(path, encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("date") == date and r.get("engine") == "google":
+                    out[(r["browser_profile"], r["locale"], r["keyword"])] = r
+    return out
+
+
+def diagnose_poison(cfg, log=print):
+    """2026-11-26: Google の指名語の異常（当院もグループのサイトも上位に無い）が、DataForSEO の言う poisoned SERP か確かめる。
+    指名語だけを resolve_poisoned_results: true で取り、同じ日の朝の本番と比べて表で出す（記録はしない）。
+    費用は 1 件 $0.0018（30 位まで）＋ $0.0006（突き合わせ）。指名語 12 組 × Google 2 本＝24 件で約 $0.06。"""
+    from tracker.clients import DataForSEO
+    date = dt.datetime.now(ICT).strftime("%Y-%m-%d")
+    jobs = [j for j in build_jobs(cfg, None, yahoo=False) if j["engine"] == "google" and j["group"] == "brand"]
+    tasks = [{"keyword": j["kw"], "location_code": j["locale"]["location_code"],
+              "language_code": j["locale"]["language_code"], "device": j["device"], "os": j["os"],
+              "depth": cfg["depth"], "resolve_poisoned_results": True, "tag": tag_of(j)} for j in jobs]
+    by_tag = {tag_of(j): j for j in jobs}
+    d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
+    posted, failed = [], []
+    d.post_tasks("google", tasks, posted, failed)
+    for tag, why in failed:
+        log(f"  登録できず: {tag} {redact(str(why))}")
+    cost = sum(float(c or 0) for _, _, c in posted)
+    log(f"{date} poisoned SERP の試し: {len(posted)} 件を登録（費用 ${cost:.4f}）")
+    got = d.wait_all({tid: "google" for _, tid, _ in posted}, 30, 40, log)
+    morning = morning_of(date)
+    log("profile | locale | keyword | status | rank 朝→試し | 公式サイトが上位10件に 朝→試し | from_web | 上位3件（試し）")
+    odd_m = odd_t = n = 0
+    for tag, tid, _ in posted:
+        j, t = by_tag[tag], got.get(tid, {})
+        key = (j["profile"], j["locale"]["id"], j["kw"])
+        m = morning.get(key, {})
+        m_grp = any(g in (m.get("top10") or "") for g in GROUP_DOMAINS) if m else None
+        if t.get("status_code") != 20000:
+            log(f"{key[0]} | {key[1]} | {key[2]} | {t.get('status_code')} {t.get('status_message')} | - | - | - | -")
+            continue
+        p = parse_dfs(t, cfg, "google")
+        t_grp = any(g in " ".join(p["top10"]) for g in GROUP_DOMAINS)
+        n += 1
+        odd_m += m_grp is False
+        odd_t += not t_grp
+        log(f"{key[0]} | {key[1]} | {key[2]} | ok | {m.get('rank') or '圏外'}→{p['rank'] or '圏外'} | "
+            f"{'あり' if m_grp else ('なし' if m_grp is False else '?')}→{'あり' if t_grp else 'なし'} | "
+            f"{from_web_count(t)} | {' '.join(p['top10'][:3])}")
+    log(f"まとめ: 取れた {n} 組のうち、公式サイトが上位 10 件に無い組＝朝 {odd_m}・試し {odd_t}（費用 ${cost:.4f}）")
+
+
 def rows_recorded(date, path=None):
     """data/ranks.csv に、その日付の status=ok の行が何件あるか（予備の定時実行で二重に測らないため）"""
     path = path or ROOT / "data/ranks.csv"
@@ -358,6 +427,8 @@ def main():
     ap.add_argument("--sheet-test", action="store_true")
     ap.add_argument("--diagnose-bing", action="store_true")
     ap.add_argument("--only-yahoo", action="store_true")
+    ap.add_argument("--diagnose-poison", action="store_true",
+                    help="Google の指名語を resolve_poisoned_results 付きで取り、朝の本番と比べて表で出す（記録はしない・約 $0.06）")
     ap.add_argument("--to-test", action="store_true",
                     help="本番と同じ API で測り、ranks_test シートと data/ranks_test.csv に書く（本番の記録に混ぜない試運転）")
     ap.add_argument("--recover", action="store_true",
@@ -376,6 +447,9 @@ def main():
         sys.exit(1 if not rows or len(errors) == len(rows) else 0)
     if args.diagnose_bing:
         diagnose_bing(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
+        return
+    if args.diagnose_poison:
+        diagnose_poison(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
         return
     if args.sheet_test:  # 見本応答で 1 語ずつだけ（API は呼ばない）
         args.dry_run = True
