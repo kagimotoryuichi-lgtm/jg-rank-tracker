@@ -156,6 +156,61 @@ def parse_dfs(t, cfg, engine):
     return parse_dataforseo(t, cfg["site_domain"], cfg["brand_names"], cfg.get("competitors"), engine)
 
 
+def utc_now():
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def result_keyword(t):
+    """task_get の結果側の検索語（result[0].keyword）。DataForSEO が返した結果ページの検索語"""
+    res = (t.get("result") or [None])[0] or {}
+    return res.get("keyword")
+
+
+def same_keyword(a, b):
+    norm = lambda x: " ".join(str(x or "").replace("+", " ").split()).lower()
+    return norm(a) == norm(b)
+
+
+def bing_evidence(date, sent, got, task_of, cfg, log=print):
+    """2026-11-26: DataForSEO サポートの依頼（2026-11-26 の返信）で、取れなかった Bing のタスクの資料を残す。
+    送り直し前のものも含め、結果なし（40102）・結果の不一致になった Bing のタスクごとに、
+    タスク ID・依頼の中身・登録時刻・取得時刻・task_get の応答そのものを data/evidence/bing_failed_<日付>.json に書く
+    （Actions の保存ファイルとして残す。リポジトリには入れない。鍵は含まない）。
+    あわせて、取れた Bing の全部について、結果側の検索語（result.keyword）が依頼と一致するかをログに出す。"""
+    records, n_ok, n_diff, n_diff_mis = [], 0, 0, 0
+    fetched_at = utc_now()
+    for tid, (eng, tag, attempt, posted_at) in sent.items():
+        if eng != "bing":
+            continue
+        t = got.get(tid)
+        if t is None:
+            continue
+        payload = task_of[tag]
+        rk = result_keyword(t)
+        if t.get("status_code") == 20000:
+            n_ok += 1
+            if rk is not None and not same_keyword(rk, payload["keyword"]):
+                n_diff += 1
+                n_diff_mis += mismatched(t, cfg, eng)
+        if not needs_retry(t, cfg, eng):
+            continue
+        records.append({
+            "task_id": tid, "tag": tag, "attempt": attempt,
+            "kind": "40102" if t.get("status_code") == 40102 else "serp-mismatch",
+            "posted_at_utc": posted_at, "fetched_by_utc": fetched_at,
+            "fetched_times": 1,  # この仕組みは 1 つのタスクを 1 回だけ取りに行く
+            "task_post_payload": payload,
+            "result_keyword": rk, "result_keyword_matches": None if rk is None else same_keyword(rk, payload["keyword"]),
+            "task_get_advanced_response": t,
+        })
+    log(f"  Bing の結果側の検索語（result.keyword）: 取れた {n_ok} 件のうち依頼と違う {n_diff} 件（うち結果の不一致 {n_diff_mis} 件）")
+    if records:
+        out = ROOT / "data" / "evidence" / f"bing_failed_{date}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(records, ensure_ascii=False, indent=1), encoding="utf-8")
+        log(f"  Bing の取れなかったタスクの資料 {len(records)} 件を保存: {out.relative_to(ROOT)}")
+
+
 def dfs_task(j, cfg):
     """DataForSEO に送る 1 件。2026-11-26: Google には resolve_poisoned_results を付ける（config の設定・鍵本さんの決定）。
     Google が自動の検索にだけ本来の結果を差し替えたページ（poisoned SERP）を返すため。費用は 1 件 +$0.0006（標準キュー）。"""
@@ -187,6 +242,7 @@ def run(cfg, args, log=print):
         by_tag = {tag_of(j): j for j in dfs_jobs}
         task_of = {tag_of(j): dfs_task(j, cfg) for j in dfs_jobs}  # 2026-11-12: AI 概要は取得しない（鍵本さんの決定）
         ids = {}
+        sent = {}  # 2026-11-26: task_id → (engine, tag, 何回目, 登録時刻 UTC)。DataForSEO への報告の資料用
         d = DataForSEO(env("DFS_LOGIN"), env("DFS_PASSWORD"))
         # 2026-11-10: Bing の登録が 402 で断られたとき、登録済み（課金済み）の Google まで捨てていた。
         # エンジンごとに失敗を閉じ込め、登録できた分は必ず結果を取りに行く。
@@ -203,6 +259,7 @@ def run(cfg, args, log=print):
                 failed += [(tag_of(j), redact(e)) for j in eng_jobs if tag_of(j) not in done]
             for tag, tid, c in posted:
                 ids[tid] = (eng, tag)
+                sent[tid] = (eng, tag, 0, utc_now())
                 cost += float(c or 0)
             for tag, msg in failed:
                 rows.append(row_of(date, by_tag[tag], {}, f"error {msg}"[:200]))
@@ -231,6 +288,7 @@ def run(cfg, args, log=print):
                                 log(f"  送り直しの登録に失敗（{eng}）: {redact(e)}")
                             for tag, tid2, c in posted2:
                                 new[tid2] = (eng, tag)
+                                sent[tid2] = (eng, tag, attempt + 1, utc_now())
                                 cost += float(c or 0)
                     got2 = d.wait_all({tid: e for tid, (e, _) in new.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
                     resent = {t for _, t in new.values()}
@@ -258,6 +316,7 @@ def run(cfg, args, log=print):
                 log(f"  Bing の取れなかったタスク {len(bad)} 件（task_id | tag）:")
                 for tid, tag in bad:
                     log(f"    {tid} | {tag}")
+            bing_evidence(date, sent, got, task_of, cfg, log)
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:

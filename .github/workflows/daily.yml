@@ -70,6 +70,14 @@ jobs:
           else
             python run.py
           fi
+      - name: Bing の取れなかったタスクの資料を残す（2026-11-26・DataForSEO への報告用。リポジトリには入れない）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bing-evidence-${{ github.run_number }}
+          path: data/evidence/
+          if-no-files-found: ignore
+          retention-days: 30
       - name: CSV を保存
         if: always()
         run: |

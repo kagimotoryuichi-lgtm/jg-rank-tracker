@@ -17,3 +17,4 @@ japangreen.vn の検索順位を毎日計測する（Google・Bing＝DataForSEO�
 - 2026-11-13: DataForSEO の Bing が別の検索語の結果ページを返すことが分かった（11/5〜11/13 で取得の約 4 割、日本×日本語で 63%。check_url は依頼どおりで、実際の Bing では正しい）。`config.json` の `serp_check`: 上位 5 件に「ハノイ・ベトナム・ジャパングリーン」などの語が無ければ不一致として最大 2 回送り直し、それでも不一致なら status を `error serp-mismatch` にして圏外に数えない（11/14 の計測から）
 - 2026-11-26: 送り直しを 2 回 → 1 回に（`config.json` の `retry_no_results`。11/22 以降の Bing は 1 回目で約 8 割が失敗し、送り直しの費用が 1 日 $0.12〜0.16 だったため）。最後まで取れなかった Bing のタスク ID をログに残す（DataForSEO への報告用）
 - 2026-11-26: Google の依頼に `resolve_poisoned_results: true` を付ける（`config.json`）。11/14 ごろから Google が自動の検索にだけ本来の結果を差し替えたページ（poisoned SERP）を返し、指名語で当院もグループのサイトも上位に出ない組が毎日 9〜17 組あった。試運転（`mode=poison-test`）で 17 → 1。費用は 1 件 +$0.0006
+- 2026-11-26: DataForSEO サポートの依頼で、取れなかった Bing のタスク（送り直し前も含む）の資料＝タスク ID・依頼の中身・登録時刻・task_get の応答そのものを `data/evidence/bing_failed_<日付>.json` に書き、Actions の保存ファイル（artifact `bing-evidence-<実行番号>`・30 日）に残す。リポジトリには入れない。結果側の検索語（result.keyword）が依頼と一致するかもログに出す

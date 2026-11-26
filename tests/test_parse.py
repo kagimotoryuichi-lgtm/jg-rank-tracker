@@ -356,6 +356,8 @@ class SerpCheckTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch("tracker.clients.DataForSEO", FakeDFS), \
                 mock.patch.dict(os.environ, {"SHEET_WEBAPP_URL": ""}), mock.patch.object(run, "ROOT", Path(tmp)):
             rows, errors = run.run(cfg, args, log=lambda *_: None)
+            ev = sorted((Path(tmp) / "data" / "evidence").glob("bing_failed_*.json"))
+            self.evidence = json.loads(ev[0].read_text(encoding="utf-8")) if ev else []
         return rows, errors, posted
 
     def test_mismatch_is_resent_and_recovered(self):
@@ -374,6 +376,26 @@ class SerpCheckTest(unittest.TestCase):
         self.assertTrue(all(r["rank"] == "" for r in bing))
         self.assertEqual(len(errors), 4)
         self.assertTrue(all(r["status"] == "ok" for r in rows if r["engine"] == "google"))
+        # 2026-11-26: 取れなかった Bing のタスクの資料（送り直し前のものも含む）
+        n = 4 * (1 + self.cfg.get("retry_no_results", 2))
+        self.assertEqual(len(self.evidence), n)
+        e = self.evidence[0]
+        self.assertEqual(e["kind"], "serp-mismatch")
+        self.assertEqual(e["attempt"], 0)
+        self.assertIn("keyword", e["task_post_payload"])
+        self.assertEqual(e["task_get_advanced_response"]["status_code"], 20000)
+        self.assertEqual({x["attempt"] for x in self.evidence}, set(range(1 + self.cfg.get("retry_no_results", 2))))
+
+    def test_no_evidence_when_all_ok(self):
+        rows, errors, posted = self._run(lambda n, ok: GARBAGE if n == 1 else ok)
+        self.assertEqual(len(self.evidence), 1)  # 1 回目の不一致の 1 件だけ（送り直しで取れた）
+
+    def test_result_keyword_compare(self):
+        self.assertTrue(run.same_keyword("Japan Green  Vietnam clinic", "japan green vietnam clinic"))
+        self.assertTrue(run.same_keyword("ハノイ+病院", "ハノイ 病院"))
+        self.assertFalse(run.same_keyword("R programming", "Japan Green Vietnam Clinic"))
+        self.assertEqual(run.result_keyword({"result": [{"keyword": "abc"}]}), "abc")
+        self.assertIsNone(run.result_keyword({"status_code": 40102, "result": None}))
 
 
 class PoisonDiagnoseTest(unittest.TestCase):
