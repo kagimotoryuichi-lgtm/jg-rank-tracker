@@ -203,7 +203,8 @@ def run(cfg, args, log=print):
             got = {}
             try:
                 got = d.wait_all({tid: e for tid, (e, _) in ids.items()}, cfg["poll"]["interval_sec"], cfg["poll"]["timeout_min"], log)
-                # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ 最大 2 回まで送り直す
+                # Bing は同じ条件でも「No Search Results（40102）」が不規則に返る（2026-11-05 の診断）→ config の retry_no_results 回まで送り直す
+                # （2026-11-26 から 1 回。それまでは 2 回）
                 # 2026-11-13: 結果ページが検索語に合っていない組（serp_check）も同じく送り直す
                 for attempt in range(cfg.get("retry_no_results", 2)):
                     retry = [(tid, eng, tag) for tid, (eng, tag) in ids.items() if needs_retry(got.get(tid, {}), cfg, eng)]
@@ -243,6 +244,12 @@ def run(cfg, args, log=print):
             n_mis = sum(1 for r in rows if r["status"] == MISMATCH)
             if n_mis:
                 log(f"  送り直しても結果が不一致のまま: {n_mis} 件（圏外に数えず error serp-mismatch で記録）")
+            # 2026-11-26: DataForSEO への報告用に、最後まで取れなかった Bing のタスク ID をログに残す（ID は秘密情報ではない）
+            bad = [(tid, tag) for tid, (eng, tag) in ids.items() if eng == "bing" and needs_retry(got.get(tid) or {}, cfg, eng)]
+            if bad:
+                log(f"  Bing の取れなかったタスク {len(bad)} 件（task_id | tag）:")
+                for tid, tag in bad:
+                    log(f"    {tid} | {tag}")
 
     # --- Yahoo! JAPAN（Apify） ---
     if yj_jobs:

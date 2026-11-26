@@ -63,5 +63,7 @@
     "terms": ["ハノイ", "hanoi", "hà nội", "ha noi", "ベトナム", "vietnam", "việt nam", "viet nam", ".vn", "ジャパングリーン", "ジャパン グリーン", "ジャパン・グリーン", "japan green", "japangreen", "japan-green"]
   },
   "yahoo_jp": {"actor": "rainminer~yahoo-co-jp-search-scraper", "max_items": 30},
+  "retry_no_results": 1,
+  "_note_retry": "2026-11-26: 送り直しを 2 回 → 1 回に（鍵本さんの決定）。11/22 以降の Bing は 1 回目で約 8 割が失敗し、2 回送り直しても戻るのは 4〜19 組・送り直しの費用は 1 日 $0.12〜0.16 だったため",
   "poll": {"interval_sec": 60, "timeout_min": 45}
 }

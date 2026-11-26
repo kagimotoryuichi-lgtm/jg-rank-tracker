@@ -366,10 +366,10 @@ class SerpCheckTest(unittest.TestCase):
         self.assertTrue(all(r["status"] == "ok" for r in rows))
 
     def test_persistent_mismatch_is_not_counted_as_out_of_range(self):
-        # Bing は何度送っても不一致 → 2 回まで送り直し、記録は error serp-mismatch（順位は空欄）
+        # Bing は何度送っても不一致 → config の回数まで送り直し、記録は error serp-mismatch（順位は空欄）
         rows, errors, posted = self._run(lambda n, ok: GARBAGE)
         bing = [r for r in rows if r["engine"] == "bing"]
-        self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 * 3)  # 初回 + 送り直し 2 回
+        self.assertEqual(sum(1 for e, _ in posted if e == "bing"), 4 * (1 + self.cfg.get("retry_no_results", 2)))  # 初回 + 送り直し（config の回数）
         self.assertTrue(all(r["status"] == run.MISMATCH for r in bing))
         self.assertTrue(all(r["rank"] == "" for r in bing))
         self.assertEqual(len(errors), 4)
